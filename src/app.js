@@ -47,7 +47,11 @@ function createApp() {
 
   // Interfaz (SPA)
   const publicDir = path.join(__dirname, '..', 'public');
-  app.use(express.static(publicDir, { index: 'index.html', maxAge: config.isProduction ? '1h' : 0 }));
+  // Sin caché larga: el navegador revalida (ETag) y cada actualización se ve al recargar.
+  app.use(express.static(publicDir, {
+    index: 'index.html',
+    setHeaders: (res) => res.set('Cache-Control', 'no-cache'),
+  }));
   app.get(/^\/(?!api\/).*/, (req, res) => res.sendFile(path.join(publicDir, 'index.html')));
 
   // Manejo de errores
