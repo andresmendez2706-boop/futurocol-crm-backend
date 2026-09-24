@@ -116,7 +116,7 @@ menú en el mismo orden. Los diálogos de confirmación, aviso y motivo de pérd
 no hay ningún `window.confirm/alert/prompt`. El semáforo es un punto de color. El kanban tiene scroll
 propio por columna y se desplaza solo hacia los lados al arrastrar una tarjeta cerca del borde.
 
-> **Logo:** `public/img/logo.svg` es un logo provisional. Reemplázalo por el oficial con el mismo nombre de archivo.
+> **Logo:** `public/img/logo.png` (símbolo, se muestra en el círculo), `public/img/favicon.png` (pestaña del navegador) y `public/img/logo-completo.png` (logo con nombre).
 
 ## Decisiones tomadas donde la especificación no era explícita
 

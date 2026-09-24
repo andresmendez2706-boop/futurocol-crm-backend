@@ -44,7 +44,7 @@ function renderLogin(message = '') {
   app.innerHTML = `
     <div class="login-screen">
       <div class="login-brand">
-        <div class="logo-circle logo-lg"><img src="/img/logo.svg" alt="Futurocol Academy"></div>
+        <div class="logo-circle logo-lg"><img src="/img/logo.png" alt="Futurocol Academy"></div>
         <h1>Futurocol Academy CRM</h1>
       </div>
       <form class="login-card" id="login-form" novalidate>
@@ -91,7 +91,7 @@ function renderShell() {
   app.innerHTML = `
     <aside class="sidebar" id="sidebar">
       <div class="brand">
-        <div class="logo-circle"><img src="/img/logo.svg" alt="Futurocol Academy"></div>
+        <div class="logo-circle"><img src="/img/logo.png" alt="Futurocol Academy"></div>
         <div class="brand-name">Futurocol Academy CRM</div>
       </div>
       <div class="user-block">
