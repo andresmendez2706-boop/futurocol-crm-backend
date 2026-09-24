@@ -1,0 +1,29 @@
+# Arranque local completo: `docker compose up --build` → http://localhost:3000
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: crm
+      POSTGRES_PASSWORD: crm
+      POSTGRES_DB: futurocol_crm
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U crm -d futurocol_crm"]
+      interval: 5s
+      retries: 10
+  app:
+    build: .
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "3000:3000"
+    environment:
+      DATABASE_URL: postgres://crm:crm@db:5432/futurocol_crm
+      JWT_SECRET: ${JWT_SECRET:-cambia-este-secreto-en-produccion}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@futurocol.co}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-CambiarEsta123}
+      NODE_ENV: production
+volumes:
+  pgdata:

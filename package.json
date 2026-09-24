@@ -1,0 +1,32 @@
+{
+  "name": "futurocol-crm",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Futurocol Academy CRM — backend real (Node.js + Express + PostgreSQL)",
+  "main": "src/server.js",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "migrate": "node src/cli/migrate.js",
+    "create-admin": "node src/cli/create-admin.js",
+    "import-backup": "node src/cli/import-backup.js",
+    "test": "node --test --test-concurrency=1 \"test/**/*.test.js\""
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.3",
+    "cookie-parser": "^1.4.7",
+    "express": "^5.2.1",
+    "express-rate-limit": "^8.7.0",
+    "helmet": "^8.3.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.23.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "supertest": "^7.3.0"
+  }
+}
