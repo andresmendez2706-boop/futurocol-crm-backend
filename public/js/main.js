@@ -45,7 +45,7 @@ function renderLogin(message = '') {
     <div class="login-screen">
       <div class="login-brand">
         <div class="logo-circle logo-lg"><img src="/img/logo.png" alt="Futurocol Academy"></div>
-        <h1>Futurocol Academy CRM</h1>
+        <h1>Futurocol Academy</h1>
       </div>
       <form class="login-card" id="login-form" novalidate>
         <h2>Iniciar sesión</h2>
