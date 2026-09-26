@@ -562,3 +562,4 @@ td.negative, td.negative b { color: var(--red); }
 .owner-tag { margin-left: auto; font-style: normal; font-size: .68rem; font-weight: 700; background: #fff; color: var(--primary); border-radius: 99px; padding: 0 5px; flex: none; }
 .plan-legend { margin-top: 12px; }
 @media (max-width: 760px) { .light-summary { grid-template-columns: repeat(2, 1fr); } }
+.open-task-box { display: flex; gap: 10px; align-items: center; background: #faf9fe; border-left: 3px solid var(--primary); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }

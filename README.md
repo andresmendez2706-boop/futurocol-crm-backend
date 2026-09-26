@@ -71,6 +71,7 @@ configuración e importación y restauración de copias. GitHub Actions las corr
 - El asesor solo recibe sus propios contactos, negocios y tareas. Lo que crea queda a su nombre y no puede asignarlo a otra persona.
 - Solo el admin elimina contactos, negocios, empresas y usuarios. También es el único con acceso a Usuarios, Auditoría, Reportes, Configuración, Código fuente, CSV y copias de seguridad; si otro usuario lo intenta, la API responde `403`.
 - Tareas: el admin las ve todas, pero las de otros usuarios en **solo lectura**. Cada persona modifica solo las suyas.
+- **Una sola tarea pendiente por contacto o negocio**: para programar la siguiente hay que completar la actual (la API responde `409 OPEN_TASK_EXISTS`; aplica también a las automatizaciones y a peticiones simultáneas).
 - Al **eliminar un usuario**, sus empresas, contactos, negocios y tareas pasan a quien lo elimina, en una sola transacción. La llave foránea `ON DELETE RESTRICT` impide a nivel de base de datos que un registro quede sin dueño.
 
 ### Negocios y etapas

@@ -7,6 +7,7 @@ const { audit } = require('../audit');
 const realtime = require('../realtime');
 const repo = require('../services/repo');
 const { resolveAssignee } = require('../services/ownership');
+const { lockTargets, assertNoOpenTask } = require('../services/openTask');
 const { TASK_TYPES } = require('../constants');
 const {
   ah, HttpError, newId, mapTask, buildSet,
@@ -50,15 +51,22 @@ router.post('/', ah(async (req, res) => {
   const data = parse(createSchema, req.body);
   await assertContact(req.user, data.contactId);
   await assertDeal(req.user, data.dealId);
+  // Una tarea de un negocio queda también ligada a su contacto.
+  if (data.dealId && !data.contactId) data.contactId = (await repo.getRow('deals', data.dealId))?.contact_id || null;
   const assignedTo = await resolveAssignee(req.user, data.assignedTo);
-  const { rows } = await db.query(
-    `INSERT INTO tasks (id, contact_id, deal_id, title, type, due_date, contact_time, schedule_time, notes, done,
-       completed_at, assigned_to)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
-    [newId('t'), data.contactId ?? null, data.dealId ?? null, data.title, data.type || 'otro', data.dueDate ?? null,
-      data.contactTime ?? null, data.scheduleTime ?? null, data.notes ?? null, !!data.done, data.done ? new Date() : null,
-      assignedTo],
-  );
+  const rows = await db.tx(async (client) => {
+    const target = { contactId: data.contactId, dealId: data.dealId };
+    await lockTargets(client, target);
+    if (!data.done) await assertNoOpenTask(client, target);
+    return (await client.query(
+      `INSERT INTO tasks (id, contact_id, deal_id, title, type, due_date, contact_time, schedule_time, notes, done,
+         completed_at, assigned_to)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *`,
+      [newId('t'), data.contactId ?? null, data.dealId ?? null, data.title, data.type || 'otro', data.dueDate ?? null,
+        data.contactTime ?? null, data.scheduleTime ?? null, data.notes ?? null, !!data.done, data.done ? new Date() : null,
+        assignedTo],
+    )).rows;
+  });
   await audit({ by: req.user, action: 'creación', entityType: 'tarea', entityLabel: data.title });
   realtime.notifyChange('tasks');
   res.status(201).json(mapTask(rows[0]));
@@ -84,10 +92,25 @@ router.patch('/:id', ah(async (req, res) => {
   }
   const set = buildSet(cols);
   if (!set.count) return res.json(mapTask(current));
-  const { rows } = await db.query(
-    `UPDATE tasks SET ${set.sql}, updated_at = now() WHERE id = $${set.count + 1} RETURNING *`,
-    [...set.values, current.id],
-  );
+  const rows = await db.tx(async (client) => {
+    // Si la tarea queda (o vuelve a quedar) pendiente, o cambia de contacto/negocio,
+    // no puede haber otra tarea abierta en ese contacto o negocio.
+    const willBeOpen = cols.done === undefined ? !current.done : !cols.done;
+    const target = {
+      contactId: cols.contact_id !== undefined ? cols.contact_id : current.contact_id,
+      dealId: cols.deal_id !== undefined ? cols.deal_id : current.deal_id,
+      excludeId: current.id,
+    };
+    const targetChanged = target.contactId !== current.contact_id || target.dealId !== current.deal_id;
+    if (willBeOpen && (current.done || targetChanged)) {
+      await lockTargets(client, target);
+      await assertNoOpenTask(client, target);
+    }
+    return (await client.query(
+      `UPDATE tasks SET ${set.sql}, updated_at = now() WHERE id = $${set.count + 1} RETURNING *`,
+      [...set.values, current.id],
+    )).rows;
+  });
   realtime.notifyChange('tasks');
   res.json(mapTask(rows[0]));
 }));

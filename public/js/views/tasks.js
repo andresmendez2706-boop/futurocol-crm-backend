@@ -77,7 +77,51 @@ export function render() {
     <div class="card no-pad">${list.length ? `<div class="table-wrap"><table class="table">${taskTableHead()}<tbody>${list.map((t) => taskRow(t)).join('')}</tbody></table></div>` : emptyState('No hay tareas con estos filtros.')}</div>`;
 }
 
-export function taskForm(task = null, { contactId, dueDate, dealId } = {}) {
+// Tarea pendiente (visible para este usuario) de un contacto o negocio.
+export function openTaskOf({ contactId, dealId, excludeId } = {}) {
+  const dealContact = dealId ? dealById(dealId)?.contactId : null;
+  return S.tasks.find((x) => !x.done && x.id !== excludeId
+    && ((contactId && x.contactId === contactId) || (dealId && x.dealId === dealId) || (dealContact && x.contactId === dealContact))) || null;
+}
+
+// Un contacto/negocio solo puede tener una tarea pendiente: antes de abrir el formulario se avisa
+// y se ofrece completar la actual para programar la siguiente.
+function askAboutOpenTask(open, next) {
+  return new Promise((resolve) => {
+    const own = canEditTask(open);
+    const m = openModal({
+      title: 'Ya hay una tarea pendiente',
+      size: 'sm',
+      body: `<p class="dialog-text">Este ${open.dealId ? 'negocio / contacto' : 'contacto'} ya tiene una tarea pendiente:</p>
+        <div class="open-task-box">${lightDot(open)} <div><strong>${esc(open.title)}</strong>
+          <small class="block muted">${esc(TASK_TYPE_LABELS[open.type] || open.type)} · vence ${fmtDate(open.dueDate)} · ${esc(userName(open.assignedTo))}</small></div></div>
+        <p class="dialog-text">Para no duplicar el seguimiento, primero debe completarse esta tarea.</p>`,
+      footer: `<button class="btn" data-close>Cancelar</button>
+        <button class="btn" data-choice="view">Ver tarea</button>
+        ${own ? '<button class="btn btn-primary" data-choice="complete">Completarla y programar la siguiente</button>' : ''}`,
+      onClose: (r) => resolve(r || null),
+    });
+    m.el.querySelectorAll('[data-choice]').forEach((b) => b.addEventListener('click', () => m.close(b.dataset.choice)));
+  }).then(async (choice) => {
+    if (choice === 'view') openTask(open.id);
+    if (choice === 'complete') {
+      await api('PATCH', `/api/tasks/${open.id}`, { done: true });
+      toast('Tarea completada');
+      await window.crm.refresh();
+      next();
+    }
+  });
+}
+
+export function taskForm(task = null, opts = {}) {
+  if (!task) {
+    const open = openTaskOf(opts);
+    if (open) { askAboutOpenTask(open, () => showTaskForm(null, opts)); return; }
+  }
+  showTaskForm(task, opts);
+}
+
+function showTaskForm(task = null, { contactId, dueDate, dealId } = {}) {
   const t = task || {};
   const contacts = S.contacts.filter((c) => canManage(c) || c.id === t.contactId);
   const deals = S.deals.filter((d) => canManage(d) || d.id === t.dealId);
@@ -85,7 +129,7 @@ export function taskForm(task = null, { contactId, dueDate, dealId } = {}) {
     title: task ? 'Editar tarea' : 'Nueva tarea',
     fields: [
       { name: 'title', label: 'Título', value: t.title, required: true, full: true },
-      { name: 'contactId', label: 'Contacto', type: 'select', value: t.contactId || contactId, empty: 'Sin contacto', options: contacts.map((c) => ({ value: c.id, label: c.name })) },
+      { name: 'contactId', label: 'Contacto', type: 'select', value: t.contactId || contactId, empty: 'Sin contacto', options: contacts.map((c) => ({ value: c.id, label: `${c.name}${openTaskOf({ contactId: c.id, excludeId: t.id }) ? ' · ⚠ tiene tarea pendiente' : ''}` })) },
       { name: 'dealId', label: 'Negocio (opcional)', type: 'select', value: t.dealId || dealId, empty: 'Sin negocio', options: deals.map((d) => ({ value: d.id, label: `${d.title}${contactById(d.contactId) ? ` · ${contactById(d.contactId).name}` : ''}` })) },
       { name: 'type', label: 'Tipo', type: 'select', value: t.type || 'llamada', options: S.constants.taskTypes.map((x) => ({ value: x, label: TASK_TYPE_LABELS[x] })) },
       { name: 'dueDate', label: 'Fecha límite', type: 'date', value: t.dueDate || dueDate || S.today },

@@ -13,6 +13,7 @@ const { audit } = require('../audit');
 const { PROPOSAL_STAGE } = require('../constants');
 const { newId, todayISO, mapContact, mapDeal } = require('../util');
 const realtime = require('../realtime');
+const { lockTargets, findOpenTask } = require('./openTask');
 
 const LEAD_IDLE_MS = 2 * 24 * 3600 * 1000;
 const PROPOSAL_MS = 48 * 3600 * 1000;
@@ -23,6 +24,10 @@ function enteredStageAt(deal) {
 }
 
 async function createAutoTask(client, { rule, task, detail }) {
+  // Misma regla que las tareas manuales: nunca una segunda tarea abierta en el contacto o negocio.
+  const target = { contactId: task.contactId, dealId: task.dealId };
+  await lockTargets(client, target);
+  if (await findOpenTask(client, target)) return false;
   const ins = await client.query(
     'INSERT INTO automation_log (rule) VALUES ($1) ON CONFLICT (rule) DO NOTHING RETURNING rule',
     [rule],
@@ -68,8 +73,8 @@ async function runAutomations({ now = new Date() } = {}) {
       if (now - since < LEAD_IDLE_MS) continue;
       const hasActivity = (c.activity || []).some((a) => new Date(a.at) >= since);
       if (hasActivity) continue;
-      // Si ya tiene una tarea automática pendiente (p. ej. importada), no crear otra.
-      if (pending.some((t) => t.contact_id === c.id && t.auto_rule)) continue;
+      // Un contacto solo puede tener una tarea pendiente: si ya tiene una, no se crea otra.
+      if (pending.some((t) => t.contact_id === c.id)) continue;
       const ok = await createAutoTask(client, {
         rule: `lead_sin_actividad:${c.id}`,
         task: {
@@ -87,7 +92,8 @@ async function runAutomations({ now = new Date() } = {}) {
         if (d.stage !== PROPOSAL_STAGE || !d.contactId) continue;
         const since = enteredStageAt(d);
         if (now - since < PROPOSAL_MS) continue;
-        if (pending.some((t) => t.auto_rule && (t.deal_id === d.id || String(t.auto_rule).includes(d.id)))) continue;
+        // Ni el negocio ni su contacto pueden tener ya una tarea pendiente.
+        if (pending.some((t) => t.deal_id === d.id || t.contact_id === d.contactId)) continue;
         const ok = await createAutoTask(client, {
           rule: `propuesta_48h:${d.id}:${since.toISOString()}`,
           task: {
