@@ -9,7 +9,7 @@ const settings = require('./settings');
 const { isAdmin } = require('../permissions');
 const { WON, CLOSED_STAGES } = require('../constants');
 const {
-  dealProbability, billingDate, inPeriod, isWon, isLost, isOpen, computeCommissions, taskLight, round2,
+  dealProbability, billingDate, inPeriod, isWon, isLost, isOpen, computeCommissions, taskLight, round2, effectiveRate,
 } = require('./rules');
 const { todayISO, mapTask } = require('../util');
 
@@ -59,8 +59,12 @@ async function dashboard(viewer, period) {
   const allDeals = admin ? deals : await repo.listAllDeals();
   const comm = computeCommissions({ users: allUsers, deals: allDeals, commissions: commissionsCfg, period });
 
+  // Contactos (leads) creados en el período seleccionado; "General" = todos.
+  const periodContacts = contacts.filter((c) => inPeriod(new Date(c.createdAt).toISOString().slice(0, 10), period));
+
   const cards = {
-    contacts: contacts.length,
+    contacts: periodContacts.length,
+    contactsTotal: contacts.length,
     openDeals: open.length,
     openValue: sum(open, (d) => d.value),
     wonCount: wonPeriod.length,
@@ -86,7 +90,7 @@ async function dashboard(viewer, period) {
     value: sum(wonAll.filter((d) => monthKey(billingDate(d)) === m), (d) => d.value),
   }));
 
-  const ls = leadStages(contacts, deals, stages);
+  const ls = leadStages(periodContacts, deals, stages);
   const leadsByStage = stages.map((s) => ({ stage: s.id, label: s.label, count: ls.filter((l) => l.stage === s.id).length }));
   const dealsByStage = stages.map((s) => {
     const ds = deals.filter((d) => d.stage === s.id);
@@ -98,7 +102,7 @@ async function dashboard(viewer, period) {
     perAsesor = comm.asesores.map((a) => ({
       userId: a.userId,
       name: a.name,
-      leads: contacts.filter((c) => c.assignedTo === a.userId).length,
+      leads: periodContacts.filter((c) => c.assignedTo === a.userId).length,
       deals: deals.filter((d) => d.assignedTo === a.userId).length,
       openDeals: open.filter((d) => d.assignedTo === a.userId).length,
       won: wonPeriod.filter((d) => d.assignedTo === a.userId).length,
@@ -222,4 +226,50 @@ async function funnel(viewer, { userId, period } = {}) {
   };
 }
 
-module.exports = { dashboard, reports, funnel, leadStages, lastMonths, closeDateOf };
+/**
+ * Balance financiero del admin, mes a mes, para un año:
+ *   ganancia admin  = tasa del admin × facturación total del mes
+ *   comisión asesor = tasa de cada asesor × lo que él facturó ese mes
+ *   ganancia neta   = ganancia admin − comisiones de asesores
+ */
+async function finance(viewer, year) {
+  const [users, deals, commissionsCfg] = await Promise.all([
+    repo.listAllUsersFull(), repo.listAllDeals(), settings.getCommissions(),
+  ]);
+  const me = users.find((u) => u.id === viewer.id) || { ...viewer, role: 'admin' };
+  const adminRate = effectiveRate(me, commissionsCfg);
+  const won = deals.filter(isWon);
+  const months = [];
+  for (let month = 1; month <= 12; month++) {
+    const period = { type: 'month', year, month };
+    const comm = computeCommissions({ users, deals, commissions: commissionsCfg, period });
+    const monthWon = won.filter((d) => inPeriod(billingDate(d), period));
+    const adminGross = round2((comm.totalBilling * adminRate) / 100);
+    const asesores = comm.asesores.map((a) => ({
+      ...a, dealIds: monthWon.filter((d) => d.assignedTo === a.userId).map((d) => d.id),
+    }));
+    months.push({
+      month,
+      billing: comm.totalBilling,
+      wonCount: monthWon.length,
+      dealIds: monthWon.map((d) => d.id),
+      adminGross,
+      asesoresCommission: comm.asesoresTotal,
+      net: round2(adminGross - comm.asesoresTotal),
+      asesores,
+    });
+  }
+  const total = (k) => round2(months.reduce((acc, m) => acc + m[k], 0));
+  return {
+    year,
+    adminRate,
+    months,
+    totals: {
+      billing: total('billing'), adminGross: total('adminGross'),
+      asesoresCommission: total('asesoresCommission'), net: total('net'),
+      wonCount: months.reduce((acc, m) => acc + m.wonCount, 0),
+    },
+  };
+}
+
+module.exports = { dashboard, reports, funnel, finance, leadStages, lastMonths, closeDateOf };

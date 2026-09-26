@@ -56,7 +56,7 @@ export async function render() {
     </div>
 
     <section class="stats-grid">
-      ${card('Contactos', c.contacts.toLocaleString('es-CO'), { action: 'data-action="go" data-to="contactos"' })}
+      ${card('Contactos del período', c.contacts.toLocaleString('es-CO'), { sub: `leads creados · ${esc(pl)}${S.period.type !== 'all' ? ` · ${c.contactsTotal.toLocaleString('es-CO')} en total` : ''}`, action: 'data-action="go-contacts"' })}
       ${card('Negocios abiertos', c.openDeals.toLocaleString('es-CO'), { action: 'data-action="go" data-to="negocios"' })}
       ${card('Valor en trámite', compactMoney(c.openValue), { sub: money(c.openValue) })}
       ${admin ? card('Pipeline ponderado', compactMoney(c.weightedPipeline), { sub: 'valor × probabilidad' }) : ''}
@@ -89,7 +89,7 @@ export async function render() {
         ${billingChart(d.billing6)}
       </div>
       <div class="card">
-        <h3>Leads por etapa</h3>
+        <h3>Leads por etapa <small class="muted">· creados en ${esc(pl.toLowerCase())}</small></h3>
         ${bars(d.leadsByStage)}
       </div>
       <div class="card">
@@ -117,4 +117,14 @@ export async function render() {
 
 export const actions = {
   go: (el) => { location.hash = `#/${el.dataset.to}`; },
+  // Abre Contactos ya filtrado por el mismo mes/año del Panel.
+  'go-contacts': () => {
+    const p = S.period;
+    S.ui.contacts = {
+      ...(S.ui.contacts || { q: '', layout: S.me.prefs?.contactsLayout || 'lista' }),
+      year: p.type === 'all' ? '' : String(p.year),
+      month: p.type === 'month' ? String(p.month) : '',
+    };
+    location.hash = '#/contactos';
+  },
 };

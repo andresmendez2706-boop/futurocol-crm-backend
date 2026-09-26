@@ -64,6 +64,11 @@ router.get('/reports', ah(async (req, res) => {
   res.json(await metrics.reports(parsePeriod(req.query)));
 }));
 
+router.get('/finance', ah(async (req, res) => {
+  const { year } = parse(z.object({ year: z.coerce.number().int().min(2000).max(2100) }), req.query);
+  res.json(await metrics.finance(req.user, year));
+}));
+
 router.post('/automations/run', ah(async (req, res) => {
   res.json(await runAutomations());
 }));

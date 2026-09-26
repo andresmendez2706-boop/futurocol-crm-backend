@@ -15,13 +15,14 @@ import * as plan from './views/plan.js';
 import * as messages from './views/messages.js';
 import * as funnel from './views/funnel.js';
 import * as reports from './views/reports.js';
+import * as finance from './views/finance.js';
 import * as audit from './views/audit.js';
 import * as settings from './views/settings.js';
 import * as users from './views/users.js';
 import * as source from './views/source.js';
 
 // Mismo orden de navegación que el CRM original.
-const VIEWS = [panel, companies, contacts, deals, tasks, plan, messages, funnel, reports, audit, settings, users, source];
+const VIEWS = [panel, companies, contacts, deals, tasks, plan, messages, funnel, reports, finance, audit, settings, users, source];
 const byId = Object.fromEntries(VIEWS.map((v) => [v.id, v]));
 
 const actions = {};

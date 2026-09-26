@@ -88,3 +88,47 @@ test('cambiar la tasa de un asesor no afecta la del admin ni la de otros (API + 
   // Asesor no puede cambiar comisiones
   assert.equal((await s.a1.patch('/api/users/u_a1', { commissionRate: 50 })).status, 403);
 });
+
+test('balance financiero: ganancia admin − comisiones de asesores, mes a mes', async () => {
+  const s = await seed();
+  await db.query("UPDATE users SET commission_rate = 25 WHERE id = 'u_admin'");
+  const c1 = (await s.a1.post('/api/contacts', { name: 'X1' })).body;
+  const c2 = (await s.a2.post('/api/contacts', { name: 'X2' })).body;
+  const d1 = (await s.a1.post('/api/deals', { title: 'd1', contactId: c1.id, value: 10000000 })).body;
+  const d2 = (await s.a2.post('/api/deals', { title: 'd2', contactId: c2.id, value: 4000000 })).body;
+  await s.a1.patch(`/api/deals/${d1.id}`, { stage: 'ganado' });
+  await s.a2.patch(`/api/deals/${d2.id}`, { stage: 'ganado' });
+  await db.query("UPDATE deals SET close_date = '2026-03-15' WHERE id = $1", [d2.id]);
+  const year = Number((await db.query('SELECT close_date FROM deals WHERE id = $1', [d1.id])).rows[0].close_date.slice(0, 4));
+  const month = Number((await db.query('SELECT close_date FROM deals WHERE id = $1', [d1.id])).rows[0].close_date.slice(5, 7));
+
+  assert.equal((await s.a1.get(`/api/admin/finance?year=${year}`)).status, 403);
+  const f = (await s.admin.get(`/api/admin/finance?year=${year}`)).body;
+  assert.equal(f.adminRate, 25);
+  assert.equal(f.months.length, 12);
+  const m = f.months[month - 1];
+  assert.equal(m.billing, 10000000);
+  assert.equal(m.adminGross, 2500000); // 25%
+  assert.equal(m.asesoresCommission, 1000000); // 10% de A1
+  assert.equal(m.net, 1500000);
+  assert.deepEqual(m.asesores.find((a) => a.userId === 'u_a1').dealIds, [d1.id]);
+  if (year === 2026) {
+    const mar = f.months[2];
+    assert.equal(mar.billing, 4000000);
+    assert.equal(mar.net, 1000000 - 200000); // 25% de 4M − 5% de 4M
+  }
+});
+
+test('panel: "Contactos" cuenta solo los leads creados en el período elegido', async () => {
+  const s = await seed();
+  const old = (await s.a1.post('/api/contacts', { name: 'Viejo' })).body;
+  await s.a1.post('/api/contacts', { name: 'Nuevo' });
+  await db.query("UPDATE contacts SET created_at = '2025-01-10T12:00:00Z' WHERE id = $1", [old.id]);
+  const all = (await s.admin.get('/api/stats/dashboard?type=all')).body;
+  assert.equal(all.cards.contacts, 2);
+  const jan = (await s.admin.get('/api/stats/dashboard?type=month&year=2025&month=1')).body;
+  assert.equal(jan.cards.contacts, 1);
+  assert.equal(jan.cards.contactsTotal, 2);
+  assert.equal(jan.leadsByStage.reduce((a, x) => a + x.count, 0), 1);
+  assert.equal(jan.perAsesor.find((p) => p.userId === 'u_a1').leads, 1);
+});

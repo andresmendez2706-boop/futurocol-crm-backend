@@ -466,3 +466,23 @@ body.is-login { background: var(--grad); min-height: 100vh; }
   .kanban-col { height: 70vh; }
   .search-results { right: 0; }
 }
+
+/* ---------- balance financiero */
+.finance-cards { display: grid; grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr; align-items: stretch; gap: 10px; margin-bottom: 18px; }
+.fin-card { background: var(--surface); border-radius: var(--radius); box-shadow: var(--shadow); padding: 16px 18px; display: flex; flex-direction: column; gap: 4px; border-top: 3px solid var(--primary); }
+.fin-card small { color: var(--muted); font-size: .8rem; }
+.fin-card.admin { border-top-color: #6a4fc4; }
+.fin-card.asesor { border-top-color: var(--accent); }
+.fin-card.net { background: linear-gradient(160deg, #1f8f47, #2eb872); color: #fff; border-top-color: transparent; }
+.fin-card.net .stat-label, .fin-card.net small, .fin-card.net .stat-value { color: #fff; }
+.fin-card.net.negative { background: linear-gradient(160deg, #c62828, #e53935); }
+.fin-op { align-self: center; font-size: 1.6rem; font-weight: 700; color: var(--muted); }
+.finance-table tr.selected td { background: var(--primary-50); font-weight: 600; }
+td.negative, td.negative b { color: var(--red); }
+.card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; padding: 18px 20px 6px; flex-wrap: wrap; }
+.small-note { font-size: .82rem; }
+@media (max-width: 1100px) {
+  .finance-cards { grid-template-columns: 1fr 1fr; }
+  .fin-op { display: none; }
+}
+@media (max-width: 520px) { .finance-cards { grid-template-columns: 1fr; } }
