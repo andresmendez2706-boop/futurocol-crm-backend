@@ -25,6 +25,30 @@ function bars(items, { valueKey = 'count', format = (v) => v, sub } = {}) {
     </div>`).join('')}</div>`;
 }
 
+// Escalafón del asesor: la barra avanza con su facturación y marca cada tope alcanzado.
+const MILESTONES = [10, 20, 30, 40, 50, 60, 70, 80, 90, 100].map((m) => m * 1e6);
+const shortM = (n) => `${n / 1e6}M`;
+
+function ladder(billing, rate) {
+  const max = MILESTONES[MILESTONES.length - 1];
+  const reached = MILESTONES.filter((m) => billing >= m).length;
+  const next = MILESTONES.find((m) => billing < m);
+  const pctFill = Math.min(100, (billing / max) * 100);
+  const msg = !billing
+    ? `Tu primera venta del mes te pone en camino: el primer tope es <b>${shortM(MILESTONES[0])}</b> (comisión <b>${money((MILESTONES[0] * rate) / 100)}</b>).`
+    : next
+      ? `Te faltan <b>${money(next - billing)}</b> para llegar a <b>${shortM(next)}</b> · comisión al llegar: <b>${money((next * rate) / 100)}</b>`
+      : '<b>¡Superaste el tope máximo de 100M! 🎉</b>';
+  return `<div class="ladder" title="Nivel ${reached} de ${MILESTONES.length}">
+      <div class="ladder-track" role="progressbar" aria-valuemin="0" aria-valuemax="${max}" aria-valuenow="${Math.round(billing)}" aria-label="Facturación del período frente a los topes">
+        <div class="ladder-fill" style="width:${pctFill}%"></div>
+        ${MILESTONES.map((m) => `<span class="ladder-dot${billing >= m ? ' hit' : ''}" style="left:${(m / max) * 100}%" title="${shortM(m)}"></span>`).join('')}
+      </div>
+      <div class="ladder-scale"><span>0</span>${MILESTONES.filter((_, i) => i % 2 === 1).map((m) => `<span>${shortM(m)}</span>`).join('')}</div>
+      <div class="ladder-foot"><small>${msg}</small><small class="ladder-level">Nivel <b>${reached}</b>/${MILESTONES.length}</small></div>
+    </div>`;
+}
+
 function billingChart(data) {
   const max = Math.max(1, ...data.map((d) => d.value));
   return `<div class="vbars">${data.map((d) => {
@@ -77,9 +101,12 @@ export async function render() {
           <small>${pct(c.adminRate)} × facturación total de la academia (${money(c.academyBilling)}) · ${esc(pl)}</small>
         </div>` : `
         <div class="commission-card">
-          <span class="stat-label">Mi comisión</span>
-          <strong class="stat-value">${money(c.myCommission)}</strong>
-          <small>${pct(c.myRate)} × mi facturación (${money(c.billing)}) · ${esc(pl)}</small>
+          <div class="ladder-row">
+            <div><span class="stat-label">Mi comisión · ${esc(pl)}</span>
+              <strong class="stat-value">${money(c.myCommission)}</strong></div>
+            <small>Facturado <b>${money(c.billing)}</b> · ${pct(c.myRate)} de comisión</small>
+          </div>
+          ${ladder(c.billing, c.myRate)}
         </div>`}
     </section>
 

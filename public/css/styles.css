@@ -563,3 +563,17 @@ td.negative, td.negative b { color: var(--red); }
 .plan-legend { margin-top: 12px; }
 @media (max-width: 760px) { .light-summary { grid-template-columns: repeat(2, 1fr); } }
 .open-task-box { display: flex; gap: 10px; align-items: center; background: #faf9fe; border-left: 3px solid var(--primary); border-radius: 8px; padding: 10px 12px; margin: 10px 0; }
+
+/* ---------- escalafón del asesor (dentro de "Mi comisión") */
+.ladder-row { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.ladder-row > div { display: flex; flex-direction: column; gap: 4px; }
+.ladder-row small b, .ladder-foot b { color: #fff; }
+.ladder { margin-top: 12px; }
+.ladder-track { position: relative; height: 10px; background: rgba(255, 255, 255, .28); border-radius: 99px; }
+.ladder-fill { position: absolute; inset: 0 auto 0 0; background: linear-gradient(90deg, #ffe082, #ffb300); border-radius: 99px; box-shadow: 0 0 10px rgba(255, 193, 7, .55); transition: width .6s ease; }
+.ladder-dot { position: absolute; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: rgba(255, 255, 255, .55); }
+.ladder-dot.hit { background: #ffb300; box-shadow: 0 0 0 2px #fff; }
+.ladder-dot:last-child { margin-left: -8px; }
+.ladder-scale { display: flex; justify-content: space-between; font-size: .7rem; color: rgba(255, 255, 255, .85); margin-top: 6px; }
+.ladder-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+.ladder-level { white-space: nowrap; }
