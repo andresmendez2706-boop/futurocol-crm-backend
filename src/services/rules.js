@@ -115,7 +115,22 @@ function computeCommissions({ users, deals, commissions, period }) {
 
 const round2 = (n) => Math.round(n * 100) / 100;
 
+/**
+ * Rentabilidad de un período = lo que te queda ÷ tu ganancia bruta (tu % de la facturación).
+ * Nivel: excelente / bueno / muy-malo según PROFIT_THRESHOLDS; "sin-datos" si no hubo movimiento.
+ * Si hubo costos pero ninguna facturación, es "muy-malo" (sin margen calculable).
+ */
+function profitability({ adminGross, net, billing, expensesTotal = 0, asesoresCommission = 0 }, thresholds) {
+  if (!billing && !expensesTotal && !asesoresCommission) return { margin: null, level: 'sin-datos' };
+  if (!(adminGross > 0)) return { margin: null, level: 'muy-malo' };
+  const margin = round2((net / adminGross) * 100);
+  let level = 'muy-malo';
+  if (margin >= thresholds.excelente) level = 'excelente';
+  else if (margin >= thresholds.bueno) level = 'bueno';
+  return { margin, level };
+}
+
 module.exports = {
   dealProbability, effectiveRate, billingDate, parsePeriod, inPeriod, isWon, isLost, isOpen,
-  taskLight, computeCommissions, round2,
+  taskLight, computeCommissions, round2, profitability,
 };

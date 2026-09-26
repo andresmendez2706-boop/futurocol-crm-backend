@@ -59,6 +59,10 @@ const DEFAULT_COMMISSIONS = {
 // Categorías sugeridas para los gastos de operación (se puede escribir otra).
 const EXPENSE_CATEGORIES = ['Marketing', 'Planes móviles', 'Nómina / personal', 'Arriendo', 'Servicios', 'Plataformas / software', 'Otros'];
 
+// Semáforo de rentabilidad del Balance financiero: % que te queda de tu ganancia bruta.
+//   >= excelente → Excelente (verde) · >= bueno → Bueno (amarillo) · por debajo → Muy malo (rojo)
+const PROFIT_THRESHOLDS = { excelente: 40, bueno: 15 };
+
 const AUDIT_ACTIONS = [
   'creación', 'edición', 'eliminación', 'cambio de etapa', 'cierre ganado', 'cierre perdido',
   'cambio de responsable', 'cambio de permisos', 'cambio de comisión', 'configuración',
@@ -67,5 +71,5 @@ const AUDIT_ACTIONS = [
 
 module.exports = {
   PROGRAMS, DEAL_TYPES, TASK_TYPES, ACTIVITY_TYPES, DEFAULT_STAGES, PROTECTED_STAGES,
-  CLOSED_STAGES, WON, LOST, PROPOSAL_STAGE, DEFAULT_COMMISSIONS, AUDIT_ACTIONS, EXPENSE_CATEGORIES,
+  CLOSED_STAGES, WON, LOST, PROPOSAL_STAGE, DEFAULT_COMMISSIONS, AUDIT_ACTIONS, EXPENSE_CATEGORIES, PROFIT_THRESHOLDS,
 };

@@ -175,3 +175,33 @@ test('gastos de operación: ingreso manual del admin y descuento en el balance',
   const logs = await db.query("SELECT count(*)::int AS n FROM audit_log WHERE entity_type = 'gasto'");
   assert.ok(logs.rows[0].n >= 4);
 });
+
+test('rentabilidad con semáforo y vista general (todos los meses)', async () => {
+  const { profitability } = require('../src/services/rules');
+  const th = { excelente: 40, bueno: 15 };
+  assert.deepEqual(profitability({ billing: 0, adminGross: 0, net: 0 }, th), { margin: null, level: 'sin-datos' });
+  assert.deepEqual(profitability({ billing: 0, adminGross: 0, net: -100, expensesTotal: 100 }, th), { margin: null, level: 'muy-malo' });
+  assert.equal(profitability({ billing: 1000, adminGross: 250, net: 150 }, th).level, 'excelente'); // 60%
+  assert.equal(profitability({ billing: 1000, adminGross: 250, net: 50 }, th).level, 'bueno'); // 20%
+  assert.equal(profitability({ billing: 1000, adminGross: 250, net: 10 }, th).level, 'muy-malo'); // 4%
+
+  const s = await seed();
+  await db.query("UPDATE users SET commission_rate = 25 WHERE id = 'u_admin'");
+  const c = (await s.a1.post('/api/contacts', { name: 'R' })).body;
+  const d = (await s.a1.post('/api/deals', { title: 'r', contactId: c.id, value: 8000000 })).body;
+  await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
+  await db.query("UPDATE deals SET close_date = '2025-11-20' WHERE id = $1", [d.id]);
+  await s.admin.post('/api/admin/expenses', { year: 2026, month: 1, category: 'Marketing', amount: 100000 });
+
+  const g = (await s.admin.get('/api/admin/finance?all=1')).body;
+  assert.equal(g.all, true);
+  assert.deepEqual([g.months[0].year, g.months[0].month], [2025, 11]);
+  const nov = g.months[0];
+  assert.equal(nov.net, 2000000 - 800000); // 25% de 8M − 10% de 8M
+  assert.equal(nov.margin, 60);
+  assert.equal(nov.level, 'excelente');
+  const jan = g.months.find((x) => x.year === 2026 && x.month === 1);
+  assert.equal(jan.level, 'muy-malo');
+  assert.equal(g.totals.net, 1200000 - 100000);
+  assert.equal((await s.admin.get('/api/admin/finance')).status, 400);
+});

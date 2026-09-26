@@ -67,8 +67,12 @@ router.get('/reports', ah(async (req, res) => {
 }));
 
 router.get('/finance', ah(async (req, res) => {
-  const { year } = parse(z.object({ year: z.coerce.number().int().min(2000).max(2100) }), req.query);
-  res.json(await metrics.finance(req.user, year));
+  const q = parse(z.object({
+    year: z.coerce.number().int().min(2000).max(2100).optional(),
+    all: z.enum(['1', 'true']).optional(),
+  }), req.query);
+  if (!q.all && !q.year) throw new HttpError(400, 'Indica year o all=1');
+  res.json(await metrics.finance(req.user, { year: q.year, all: !!q.all }));
 }));
 
 // ---- Gastos de operación (solo admin, ingreso manual)
