@@ -22,13 +22,16 @@ import * as users from './views/users.js';
 import * as source from './views/source.js';
 
 // Mismo orden de navegación que el CRM original.
-const VIEWS = [panel, companies, contacts, deals, tasks, plan, messages, funnel, reports, finance, audit, settings, users, source];
+// "Tareas" es el plan de trabajo (calendario con semáforo). tasks.js ya no es una pantalla del menú,
+// pero aporta los formularios y acciones de tareas que usan las demás vistas.
+const VIEWS = [panel, companies, contacts, deals, plan, messages, funnel, reports, finance, audit, settings, users, source];
 const byId = Object.fromEntries(VIEWS.map((v) => [v.id, v]));
+const ALIASES = { plan: 'tareas' };
 
 const actions = {};
 const changes = {};
 const inputs = {};
-for (const v of VIEWS) {
+for (const v of [...VIEWS, tasks]) {
   Object.assign(actions, v.actions || {});
   Object.assign(changes, v.changes || {});
   Object.assign(inputs, v.inputs || {});
@@ -310,7 +313,8 @@ Object.assign(actions, {
 
 // ------------------------------------------------------------------ navegación
 function onRoute() {
-  const id = (location.hash.replace(/^#\/?/, '').split('?')[0]) || 'panel';
+  const raw = (location.hash.replace(/^#\/?/, '').split('?')[0]) || 'panel';
+  const id = ALIASES[raw] || raw;
   current = byId[id] ? id : 'panel';
   document.body.classList.remove('sidebar-open');
   hideSearch();

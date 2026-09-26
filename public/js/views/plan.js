@@ -1,12 +1,12 @@
 import {
-  S, esc, icon, isAdmin, options, contactById, userName, lightDot, taskLight, addDays, localISO, savePrefs,
-  MONTHS, MONTHS_SHORT, WEEKDAYS, TASK_TYPE_LABELS,
+  S, esc, icon, isAdmin, options, contactById, dealById, userName, lightDot, taskLight, addDays, localISO, savePrefs,
+  canEditTask, initials, fmtDate, MONTHS, MONTHS_SHORT, WEEKDAYS, TASK_TYPE_LABELS,
 } from '../core.js';
 import { emptyState } from '../ui.js';
 import { taskForm } from './tasks.js';
 
-export const id = 'plan';
-export const title = 'Plan de trabajo';
+export const id = 'tareas';
+export const title = 'Tareas';
 export const navIcon = 'plan';
 
 const MODES = [{ value: 'dia', label: 'Día' }, { value: 'semana', label: 'Semana' }, { value: 'mes', label: 'Mes' }, { value: 'anio', label: 'Año' }];
@@ -46,17 +46,22 @@ function tasksIn(from, to) {
     .sort((x, y) => String(x.contactTime || x.scheduleTime || '99').localeCompare(String(y.contactTime || y.scheduleTime || '99')));
 }
 
-const chip = (t) => `<button class="task-chip ${t.done ? 'done' : ''}" data-action="open-task" data-id="${esc(t.id)}" title="${esc(t.title)}">
-  ${lightDot(t)}<span>${t.contactTime ? `<b>${esc(t.contactTime)}</b> ` : ''}${esc(t.title)}</span></button>`;
+const tipOf = (t) => [t.title, contactById(t.contactId)?.name, dealById(t.dealId)?.title, isAdmin() ? `Responsable: ${userName(t.assignedTo)}` : ''].filter(Boolean).join(' · ');
+const chip = (t) => `<button class="task-chip ${t.done ? 'done' : ''}" data-action="open-task" data-id="${esc(t.id)}" title="${esc(tipOf(t))}">
+  ${lightDot(t)}<span>${t.contactTime ? `<b>${esc(t.contactTime)}</b> ` : ''}${esc(t.title)}</span>${isAdmin() && !ui().owner ? `<em class="owner-tag">${esc(initials(userName(t.assignedTo)))}</em>` : ''}</button>`;
+
+// Fila de tarea (vista Día y Lista): semáforo, casilla para completar (solo el responsable), contacto y negocio.
+const taskLine = (t) => `<li class="${t.done ? 'done' : ''}">
+  <span class="plan-time">${esc(t.contactTime || t.scheduleTime || '—')}</span>
+  ${lightDot(t)}
+  ${canEditTask(t) ? `<input type="checkbox" data-change="toggle-task" data-id="${esc(t.id)}" ${t.done ? 'checked' : ''} title="Marcar como completada">` : ''}
+  <div><a href="#" data-action="open-task" data-id="${esc(t.id)}"><strong>${esc(t.title)}</strong></a>
+  <small class="block muted">${esc(TASK_TYPE_LABELS[t.type] || t.type)} · ${esc(contactById(t.contactId)?.name || 'Sin contacto')}${dealById(t.dealId) ? ` · ${esc(dealById(t.dealId).title)}` : ''}${isAdmin() ? ` · ${esc(userName(t.assignedTo))}` : ''}</small></div>
+</li>`;
 
 function dayPanel(from) {
   const list = tasksIn(from, from);
-  return `<div class="card">${list.length ? `<ul class="plan-day">${list.map((t) => `<li>
-      <span class="plan-time">${esc(t.contactTime || t.scheduleTime || '—')}</span>
-      ${lightDot(t)}
-      <div><a href="#" data-action="open-task" data-id="${esc(t.id)}"><strong>${esc(t.title)}</strong></a>
-      <small class="block muted">${esc(TASK_TYPE_LABELS[t.type] || t.type)} · ${esc(contactById(t.contactId)?.name || 'Sin contacto')}${isAdmin() ? ` · ${esc(userName(t.assignedTo))}` : ''}</small></div>
-    </li>`).join('')}</ul>` : emptyState('No hay tareas para este día.')}
+  return `<div class="card">${list.length ? `<ul class="plan-day">${list.map(taskLine).join('')}</ul>` : emptyState('No hay tareas para este día.')}
     <button class="btn btn-sm" data-action="plan-new" data-date="${from}">${icon('plus')} Agregar tarea</button></div>`;
 }
 
@@ -114,10 +119,38 @@ function listLayout(from, to) {
   return `<div class="card">${Object.entries(groups).map(([d, ts]) => {
     const date = parse(d);
     return `<div class="plan-group"><h4 class="${d === S.today ? 'today' : ''}">${WEEKDAYS[(date.getDay() + 6) % 7]} ${date.getDate()} de ${MONTHS[date.getMonth()]}</h4>
-      <ul class="plan-day">${ts.map((t) => `<li><span class="plan-time">${esc(t.contactTime || t.scheduleTime || '—')}</span>${lightDot(t)}
-        <div><a href="#" data-action="open-task" data-id="${esc(t.id)}"><strong>${esc(t.title)}</strong></a>
-        <small class="block muted">${esc(TASK_TYPE_LABELS[t.type] || t.type)} · ${esc(contactById(t.contactId)?.name || 'Sin contacto')}${isAdmin() ? ` · ${esc(userName(t.assignedTo))}` : ''}</small></div></li>`).join('')}</ul></div>`;
+      <ul class="plan-day">${ts.map(taskLine).join('')}</ul></div>`;
   }).join('')}</div>`;
+}
+
+// Tareas del alcance actual (responsable elegido), sin importar la fecha.
+const scopeTasks = () => S.tasks.filter((t) => !ui().owner || t.assignedTo === ui().owner);
+
+function summary() {
+  const all = scopeTasks();
+  const pending = all.filter((t) => !t.done);
+  const red = pending.filter((t) => taskLight(t) === 'rojo');
+  const yellow = pending.filter((t) => taskLight(t) === 'amarillo');
+  const green = pending.filter((t) => taskLight(t) === 'verde');
+  const done = all.filter((t) => t.done);
+  const u = ui();
+  const box = (key, dot, label, n) => `<button class="light-box ${u.focus === key ? 'active' : ''}" data-action="plan-focus" data-key="${key}">
+    <span class="dot ${dot}"></span><strong>${n}</strong><span>${label}</span></button>`;
+  let focusList = '';
+  if (u.focus) {
+    const lists = { rojo: red, amarillo: yellow, verde: green, hechas: done.slice(-30).reverse() };
+    const titles = { rojo: 'Seguimientos vencidos', amarillo: 'Vencen hoy o mañana', verde: 'Pendientes a tiempo', hechas: 'Completadas (últimas 30)' };
+    const list = [...lists[u.focus]].sort((a, b) => String(a.dueDate || '9').localeCompare(String(b.dueDate || '9')));
+    focusList = `<div class="card focus-card"><div class="section-head"><h3>${titles[u.focus]} (${list.length})</h3>
+      <button class="icon-btn" data-action="plan-focus" data-key="${u.focus}" title="Cerrar">${icon('close')}</button></div>
+      ${list.length ? `<ul class="plan-day">${list.map((t) => taskLine(t).replace('<span class="plan-time">', `<span class="plan-time wide">${esc(fmtDate(t.dueDate))} `)).join('')}</ul>` : emptyState('No hay tareas aquí.')}</div>`;
+  }
+  return `<section class="light-summary">
+      ${box('rojo', 'dot-rojo', 'Vencidas', red.length)}
+      ${box('amarillo', 'dot-amarillo', 'Hoy o mañana', yellow.length)}
+      ${box('verde', 'dot-verde', 'A tiempo', green.length)}
+      ${box('hechas', 'dot-hecha', 'Completadas', done.length)}
+    </section>${focusList}`;
 }
 
 export function render() {
@@ -132,8 +165,9 @@ export function render() {
   else body = `<div class="year-grid">${[...Array(12)].map((_, m) => monthGrid(d.getFullYear(), m, { mini: true })).join('')}</div>`;
   return `
     <div class="page-head">
-      <div><h1>Plan de trabajo</h1><p class="muted">${esc(rangeTitle())}</p></div>
+      <div><h1>Tareas</h1><p class="muted">${esc(rangeTitle())}${isAdmin() ? ` · ${u.owner ? esc(userName(u.owner)) : 'todo el equipo'}` : ' · mi plan de trabajo'}</p></div>
       <div class="toolbar">
+        <button class="btn btn-primary" data-action="new-task">${icon('plus')} Nueva tarea</button>
         <div class="seg">${MODES.map((m) => `<button class="seg-btn ${u.mode === m.value ? 'active' : ''}" data-action="plan-mode" data-mode="${m.value}">${m.label}</button>`).join('')}</div>
         <div class="seg">
           <button class="seg-btn ${u.layout === 'panel' ? 'active' : ''}" data-action="plan-layout" data-layout="panel" title="Panel">${icon('grid')} Panel</button>
@@ -147,10 +181,14 @@ export function render() {
         </div>
       </div>
     </div>
-    ${body}`;
+    ${summary()}
+    ${body}
+    <div class="legend plan-legend"><span><span class="dot dot-rojo"></span> Vencida</span><span><span class="dot dot-amarillo"></span> Vence hoy o mañana</span><span><span class="dot dot-verde"></span> A tiempo o completada</span>
+      <span class="muted">Para programar seguimientos abre un contacto o un negocio y usa “Programar tarea”.</span></div>`;
 }
 
 export const actions = {
+  'plan-focus': (el) => { const u = ui(); u.focus = u.focus === el.dataset.key ? null : el.dataset.key; window.crm.render(); },
   'plan-mode': (el) => { ui().mode = el.dataset.mode; savePrefs({ planMode: el.dataset.mode }); window.crm.render(); },
   'plan-layout': (el) => { ui().layout = el.dataset.layout; savePrefs({ planLayout: el.dataset.layout }); window.crm.render(); },
   'plan-today': () => { ui().anchor = S.today; window.crm.render(); },

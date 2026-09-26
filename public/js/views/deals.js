@@ -1,8 +1,9 @@
 import {
   S, api, esc, icon, isAdmin, canManage, userName, contactById, dealById, money, compactMoney, pct, fmtDate,
   fmtDateTime, stageLabel, options, dealProbability, isClosedStage, inPeriod, billingDate, periodLabel,
-  savePrefs, cachedDashboard, WON, LOST,
+  savePrefs, cachedDashboard, canEditTask, lightDot, TASK_TYPE_LABELS, WON, LOST,
 } from '../core.js';
+import { taskForm } from './tasks.js';
 import {
   formModal, openModal, confirmDialog, promptDialog, toast, emptyState, periodPicker, assigneeField,
 } from '../ui.js';
@@ -210,6 +211,18 @@ export function dealForm(deal = null, { contactId, stage } = {}) {
 }
 
 // ---------------------------------------------------------------- detalle
+function dealTasksHtml(d, manage) {
+  const tasks = S.tasks.filter((t) => t.dealId === d.id).sort((a, b) => (a.done - b.done) || String(a.dueDate).localeCompare(String(b.dueDate)));
+  return `<div class="section-head"><h4>Tareas de seguimiento (${tasks.length})</h4>
+      ${manage ? `<button class="btn btn-sm" data-action="deal-new-task" data-id="${esc(d.id)}">${icon('plus')} Programar tarea</button>` : ''}</div>
+    ${tasks.length ? `<ul class="mini-list">${tasks.map((t) => `<li class="${t.done ? 'done' : ''}">
+      ${lightDot(t)}
+      ${canEditTask(t) ? `<input type="checkbox" data-change="toggle-task" data-id="${esc(t.id)}" ${t.done ? 'checked' : ''} title="Completada">` : ''}
+      <a href="#" data-action="open-task" data-id="${esc(t.id)}">${esc(t.title)}</a>
+      <small>${esc(TASK_TYPE_LABELS[t.type] || t.type)} · ${fmtDate(t.dueDate)}${t.contactTime ? ` ${esc(t.contactTime)}` : ''}${isAdmin() ? ` · ${esc(userName(t.assignedTo))}` : ''}</small></li>`).join('')}</ul>`
+    : '<p class="muted">Sin tareas programadas para este negocio.</p>'}`;
+}
+
 function detailHtml(d) {
   const c = contactById(d.contactId);
   const manage = canManage(d);
@@ -238,6 +251,7 @@ function detailHtml(d) {
       <div class="full"><small>Siguiente paso</small><span>${esc(d.nextStep || '—')}</span></div>
       ${d.lossReason ? `<div class="full"><small>Motivo de pérdida</small><span class="loss">${esc(d.lossReason)}</span></div>` : ''}
     </div>
+    ${dealTasksHtml(d, manage)}
     <h4>Historial de etapas</h4>
     ${history.length ? `<div class="table-wrap"><table class="table compact">
       <thead><tr><th>Fecha</th><th>De</th><th>A</th><th>Por</th></tr></thead>
@@ -285,6 +299,10 @@ export const actions = {
     await api('DELETE', `/api/deals/${d.id}`);
     toast('Negocio eliminado');
     await window.crm.refresh();
+  },
+  'deal-new-task': (el) => {
+    const d = dealById(el.dataset.id);
+    if (d) taskForm(null, { dealId: d.id, contactId: d.contactId });
   },
   'deal-win': (el) => moveDeal(dealById(el.dataset.id), WON),
   'deal-lose': (el) => moveDeal(dealById(el.dataset.id), LOST),

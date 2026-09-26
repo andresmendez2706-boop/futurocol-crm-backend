@@ -1,5 +1,5 @@
 import {
-  S, api, esc, icon, isAdmin, canManage, canEditTask, userName, contactById, taskById, fmtDate, fmtDateTime,
+  S, api, esc, icon, isAdmin, canManage, canEditTask, userName, contactById, dealById, taskById, fmtDate, fmtDateTime,
   options, TASK_TYPE_LABELS, lightDot, taskLight, addDays,
 } from '../core.js';
 import {
@@ -77,14 +77,16 @@ export function render() {
     <div class="card no-pad">${list.length ? `<div class="table-wrap"><table class="table">${taskTableHead()}<tbody>${list.map((t) => taskRow(t)).join('')}</tbody></table></div>` : emptyState('No hay tareas con estos filtros.')}</div>`;
 }
 
-export function taskForm(task = null, { contactId, dueDate } = {}) {
+export function taskForm(task = null, { contactId, dueDate, dealId } = {}) {
   const t = task || {};
   const contacts = S.contacts.filter((c) => canManage(c) || c.id === t.contactId);
+  const deals = S.deals.filter((d) => canManage(d) || d.id === t.dealId);
   formModal({
     title: task ? 'Editar tarea' : 'Nueva tarea',
     fields: [
       { name: 'title', label: 'Título', value: t.title, required: true, full: true },
       { name: 'contactId', label: 'Contacto', type: 'select', value: t.contactId || contactId, empty: 'Sin contacto', options: contacts.map((c) => ({ value: c.id, label: c.name })) },
+      { name: 'dealId', label: 'Negocio (opcional)', type: 'select', value: t.dealId || dealId, empty: 'Sin negocio', options: deals.map((d) => ({ value: d.id, label: `${d.title}${contactById(d.contactId) ? ` · ${contactById(d.contactId).name}` : ''}` })) },
       { name: 'type', label: 'Tipo', type: 'select', value: t.type || 'llamada', options: S.constants.taskTypes.map((x) => ({ value: x, label: TASK_TYPE_LABELS[x] })) },
       { name: 'dueDate', label: 'Fecha límite', type: 'date', value: t.dueDate || dueDate || S.today },
       { name: 'contactTime', label: 'Hora de contacto', type: 'time', value: t.contactTime },
@@ -94,6 +96,8 @@ export function taskForm(task = null, { contactId, dueDate } = {}) {
       task ? { name: 'done', label: 'Completada', type: 'checkbox', value: t.done } : null,
     ],
     onSubmit: async (v) => {
+      // Si se eligió un negocio y no un contacto, la tarea queda con el contacto del negocio.
+      if (v.dealId && !v.contactId) v.contactId = dealById(v.dealId)?.contactId || '';
       if (task) await api('PATCH', `/api/tasks/${task.id}`, v);
       else await api('POST', '/api/tasks', v);
       toast(task ? 'Tarea actualizada' : 'Tarea creada');
@@ -114,6 +118,7 @@ export function openTask(taskId) {
         <div><small>Estado</small><span>${lightDot(t)} ${t.done ? `Completada ${fmtDateTime(t.completedAt)}` : taskLight(t) === 'rojo' ? 'Vencida' : 'Pendiente'}</span></div>
         <div><small>Tipo</small><span>${esc(TASK_TYPE_LABELS[t.type] || t.type)}</span></div>
         <div><small>Contacto</small><span>${c ? `<a href="#" data-action="open-contact" data-id="${esc(c.id)}">${esc(c.name)}</a>` : '—'}</span></div>
+        <div><small>Negocio</small><span>${dealById(t.dealId) ? `<a href="#" data-action="open-deal" data-id="${esc(t.dealId)}">${esc(dealById(t.dealId).title)}</a>` : '—'}</span></div>
         <div><small>Fecha límite</small><span>${fmtDate(t.dueDate)}</span></div>
         <div><small>Hora de contacto</small><span>${esc(t.contactTime || '—')}</span></div>
         <div><small>Hora de agendamiento</small><span>${esc(t.scheduleTime || '—')}</span></div>

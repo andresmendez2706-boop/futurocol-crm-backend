@@ -156,7 +156,7 @@ function detailHtml(c) {
           : '<p class="muted">Sin actividades registradas.</p>'}
       </section>
       <section>
-        <div class="section-head"><h4>Tareas (${tasks.length})</h4>${manage ? `<button class="btn btn-sm" data-action="contact-new-task" data-id="${esc(c.id)}">${icon('plus')} Tarea</button>` : ''}</div>
+        <div class="section-head"><h4>Tareas (${tasks.length})</h4>${manage ? `<button class="btn btn-sm" data-action="contact-new-task" data-id="${esc(c.id)}">${icon('plus')} Programar tarea</button>` : ''}</div>
         ${tasks.length ? `<ul class="mini-list">${tasks.map((t) => `<li class="${t.done ? 'done' : ''}">
           ${lightDot(t)}
           ${canEditTask(t) ? `<input type="checkbox" data-change="toggle-task" data-id="${esc(t.id)}" ${t.done ? 'checked' : ''} title="Completada">` : ''}

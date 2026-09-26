@@ -544,3 +544,21 @@ td.negative, td.negative b { color: var(--red); }
 .expense-form { grid-template-columns: 1fr 1fr; }
 .expense-form .btn { justify-content: center; }
 .table-scroll { max-height: 380px; }
+
+/* ---------- tareas (plan de trabajo) */
+.light-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-bottom: 14px; }
+.light-box { display: flex; align-items: center; gap: 10px; background: var(--surface); border: 2px solid transparent; border-radius: var(--radius); box-shadow: var(--shadow); padding: 12px 14px; cursor: pointer; font: inherit; color: var(--text); text-align: left; }
+.light-box:hover { border-color: var(--primary-50); }
+.light-box.active { border-color: var(--primary); }
+.light-box strong { font-size: 1.4rem; }
+.light-box span:last-child { color: var(--muted); font-size: .86rem; }
+.light-box .dot { width: 14px; height: 14px; }
+.dot-hecha { background: var(--primary); box-shadow: 0 0 0 3px rgba(69, 39, 160, .15); }
+.focus-card { border-left: 4px solid var(--primary); }
+.focus-card .plan-day { max-height: 320px; overflow-y: auto; }
+.plan-time.wide { width: auto; min-width: 110px; }
+.plan-day li.done strong { text-decoration: line-through; color: var(--muted); }
+.plan-day input[type=checkbox] { width: 16px; height: 16px; }
+.owner-tag { margin-left: auto; font-style: normal; font-size: .68rem; font-weight: 700; background: #fff; color: var(--primary); border-radius: 99px; padding: 0 5px; flex: none; }
+.plan-legend { margin-top: 12px; }
+@media (max-width: 760px) { .light-summary { grid-template-columns: repeat(2, 1fr); } }
