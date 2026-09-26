@@ -14,7 +14,9 @@ const metrics = require('../services/metrics');
 const backup = require('../services/backup');
 const { runAutomations } = require('../services/automations');
 const { parsePeriod } = require('../services/rules');
-const { ah, HttpError, mapAudit } = require('../util');
+const {
+  ah, HttpError, mapAudit, mapExpense, newId, buildSet,
+} = require('../util');
 const { z, parse } = require('../validate');
 
 const router = express.Router();
@@ -67,6 +69,71 @@ router.get('/reports', ah(async (req, res) => {
 router.get('/finance', ah(async (req, res) => {
   const { year } = parse(z.object({ year: z.coerce.number().int().min(2000).max(2100) }), req.query);
   res.json(await metrics.finance(req.user, year));
+}));
+
+// ---- Gastos de operación (solo admin, ingreso manual)
+const expenseSchema = z.object({
+  year: z.coerce.number().int().min(2000).max(2100),
+  month: z.coerce.number().int().min(1).max(12),
+  category: z.string().trim().min(1, 'elige una categoría').max(60),
+  description: z.string().trim().max(300).optional().nullable(),
+  amount: z.coerce.number().min(0, 'el valor no puede ser negativo').max(1e13),
+});
+const fmtMoney = (n) => `$${Number(n).toLocaleString('es-CO')}`;
+
+router.post('/expenses', ah(async (req, res) => {
+  const d = parse(expenseSchema, req.body);
+  const { rows } = await db.query(
+    `INSERT INTO expenses (id, year, month, category, description, amount, created_by)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
+    [newId('g'), d.year, d.month, d.category, d.description || null, d.amount, req.user.id],
+  );
+  await audit({ by: req.user, action: 'creación', entityType: 'gasto', entityLabel: `${d.category} ${d.month}/${d.year}`, detail: `${fmtMoney(d.amount)}${d.description ? ` · ${d.description}` : ''}` });
+  realtime.notifyChange('finance', []);
+  res.status(201).json(mapExpense(rows[0]));
+}));
+
+router.patch('/expenses/:id', ah(async (req, res) => {
+  const d = parse(expenseSchema.partial(), req.body);
+  const set = buildSet({ year: d.year, month: d.month, category: d.category, description: d.description, amount: d.amount });
+  if (!set.count) throw new HttpError(400, 'Nada que actualizar');
+  const { rows } = await db.query(
+    `UPDATE expenses SET ${set.sql}, updated_at = now() WHERE id = $${set.count + 1} RETURNING *`, [...set.values, req.params.id],
+  );
+  if (!rows[0]) throw new HttpError(404, 'Gasto no encontrado');
+  const e = rows[0];
+  await audit({ by: req.user, action: 'edición', entityType: 'gasto', entityLabel: `${e.category} ${e.month}/${e.year}`, detail: fmtMoney(e.amount) });
+  realtime.notifyChange('finance', []);
+  res.json(mapExpense(e));
+}));
+
+router.delete('/expenses/:id', ah(async (req, res) => {
+  const { rows } = await db.query('DELETE FROM expenses WHERE id = $1 RETURNING *', [req.params.id]);
+  if (!rows[0]) throw new HttpError(404, 'Gasto no encontrado');
+  const e = rows[0];
+  await audit({ by: req.user, action: 'eliminación', entityType: 'gasto', entityLabel: `${e.category} ${e.month}/${e.year}`, detail: fmtMoney(e.amount) });
+  realtime.notifyChange('finance', []);
+  res.json({ ok: true });
+}));
+
+// Copia los gastos de un mes a otro (útil para gastos fijos como los planes móviles).
+router.post('/expenses/copy', ah(async (req, res) => {
+  const p = parse(z.object({
+    fromYear: z.coerce.number().int(), fromMonth: z.coerce.number().int().min(1).max(12),
+    toYear: z.coerce.number().int().min(2000).max(2100), toMonth: z.coerce.number().int().min(1).max(12),
+  }), req.body);
+  const { rows } = await db.query('SELECT * FROM expenses WHERE year = $1 AND month = $2', [p.fromYear, p.fromMonth]);
+  for (const e of rows) {
+    await db.query(
+      `INSERT INTO expenses (id, year, month, category, description, amount, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [newId('g'), p.toYear, p.toMonth, e.category, e.description, e.amount, req.user.id],
+    );
+  }
+  if (rows.length) {
+    await audit({ by: req.user, action: 'creación', entityType: 'gasto', entityLabel: `${p.toMonth}/${p.toYear}`, detail: `${rows.length} gasto(s) copiados de ${p.fromMonth}/${p.fromYear}` });
+    realtime.notifyChange('finance', []);
+  }
+  res.json({ copied: rows.length });
 }));
 
 router.post('/automations/run', ah(async (req, res) => {

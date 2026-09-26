@@ -12,7 +12,7 @@ const app = createApp();
 
 async function resetDb() {
   await migrate({ log: () => {} });
-  await db.query(`TRUNCATE tasks, deals, contacts, companies, messages, audit_log, settings, automation_log, users CASCADE`);
+  await db.query(`TRUNCATE expenses, tasks, deals, contacts, companies, messages, audit_log, settings, automation_log, users CASCADE`);
 }
 
 async function createUser({ id, name, email, role = 'asesor', password = 'password123', commissionRate = null }) {

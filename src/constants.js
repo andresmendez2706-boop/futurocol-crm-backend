@@ -56,6 +56,9 @@ const DEFAULT_COMMISSIONS = {
   asesorScales: [5, 8, 10], // escalas sugeridas para asesores
 };
 
+// Categorías sugeridas para los gastos de operación (se puede escribir otra).
+const EXPENSE_CATEGORIES = ['Marketing', 'Planes móviles', 'Nómina / personal', 'Arriendo', 'Servicios', 'Plataformas / software', 'Otros'];
+
 const AUDIT_ACTIONS = [
   'creación', 'edición', 'eliminación', 'cambio de etapa', 'cierre ganado', 'cierre perdido',
   'cambio de responsable', 'cambio de permisos', 'cambio de comisión', 'configuración',
@@ -64,5 +67,5 @@ const AUDIT_ACTIONS = [
 
 module.exports = {
   PROGRAMS, DEAL_TYPES, TASK_TYPES, ACTIVITY_TYPES, DEFAULT_STAGES, PROTECTED_STAGES,
-  CLOSED_STAGES, WON, LOST, PROPOSAL_STAGE, DEFAULT_COMMISSIONS, AUDIT_ACTIONS,
+  CLOSED_STAGES, WON, LOST, PROPOSAL_STAGE, DEFAULT_COMMISSIONS, AUDIT_ACTIONS, EXPENSE_CATEGORIES,
 };

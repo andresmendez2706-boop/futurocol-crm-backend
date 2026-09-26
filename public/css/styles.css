@@ -486,3 +486,10 @@ td.negative, td.negative b { color: var(--red); }
   .fin-op { display: none; }
 }
 @media (max-width: 520px) { .finance-cards { grid-template-columns: 1fr; } }
+.finance-cards { grid-template-columns: 1fr auto 1fr auto 1fr auto 1fr auto 1fr; }
+.fin-card.expense { border-top-color: #f57c00; }
+.fin-card .stat-value { font-size: 1.35rem; }
+.expense-form { display: grid; grid-template-columns: 1fr 1.4fr 1fr auto; gap: 12px; align-items: end; margin: 6px 0 16px; padding: 14px; background: #faf9fe; border-radius: 12px; }
+@media (max-width: 1100px) { .finance-cards { grid-template-columns: 1fr 1fr; } }
+@media (max-width: 760px) { .expense-form { grid-template-columns: 1fr; } }
+@media (max-width: 520px) { .finance-cards { grid-template-columns: 1fr; } }

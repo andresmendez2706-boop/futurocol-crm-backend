@@ -72,6 +72,11 @@ const mapAudit = (r) => ({
   entityType: r.entity_type, entityLabel: r.entity_label, detail: r.detail,
 });
 
+const mapExpense = (r) => ({
+  id: r.id, year: r.year, month: r.month, category: r.category, description: r.description, amount: r.amount,
+  createdBy: r.created_by, createdAt: iso(r.created_at),
+});
+
 // Construye "SET a=$1, b=$2" a partir de un objeto { columna: valor } (solo claves definidas).
 function buildSet(fields, startIndex = 1) {
   const cols = Object.keys(fields).filter((k) => fields[k] !== undefined);
@@ -84,5 +89,5 @@ function buildSet(fields, startIndex = 1) {
 
 module.exports = {
   HttpError, newId, todayISO, addDaysISO, digits, ah, buildSet,
-  mapUser, mapCompany, mapContact, mapDeal, mapTask, mapMessage, mapAudit,
+  mapUser, mapCompany, mapContact, mapDeal, mapTask, mapMessage, mapAudit, mapExpense,
 };

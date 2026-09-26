@@ -18,17 +18,17 @@ const { hashPassword } = require('../auth');
 const { audit } = require('../audit');
 const { PROGRAMS, LOST } = require('../constants');
 const {
-  newId, mapUser, mapCompany, mapContact, mapDeal, mapTask, mapMessage, mapAudit,
+  newId, mapUser, mapCompany, mapContact, mapDeal, mapTask, mapMessage, mapAudit, mapExpense,
 } = require('../util');
 
 // ------------------------------------------------------------------ exportación
 async function exportBackup() {
   const q = (sql) => db.query(sql).then((r) => r.rows);
-  const [users, companies, contacts, deals, tasks, messages, auditLog] = await Promise.all([
+  const [users, companies, contacts, deals, tasks, messages, auditLog, expenses] = await Promise.all([
     q('SELECT * FROM users ORDER BY created_at'), q('SELECT * FROM companies ORDER BY created_at'),
     q('SELECT * FROM contacts ORDER BY created_at'), q('SELECT * FROM deals ORDER BY created_at'),
     q('SELECT * FROM tasks ORDER BY created_at'), q('SELECT * FROM messages ORDER BY at'),
-    q('SELECT * FROM audit_log ORDER BY at'),
+    q('SELECT * FROM audit_log ORDER BY at'), q('SELECT * FROM expenses ORDER BY year, month, created_at'),
   ]);
   const withExtra = (mapper) => (r) => ({ ...(r.extra || {}), ...mapper(r) });
   return {
@@ -42,6 +42,7 @@ async function exportBackup() {
     tasks: tasks.map(withExtra(mapTask)),
     messages: messages.map(withExtra(mapMessage)),
     auditLog: auditLog.map(withExtra(mapAudit)),
+    expenses: expenses.map(withExtra(mapExpense)),
     stages: await settings.getStages(),
     commissions: await settings.getCommissions(),
   };
@@ -56,6 +57,7 @@ const COLLECTIONS = {
   tasks: ['tasks', 'tareas'],
   messages: ['messages', 'mensajes', 'chat'],
   auditLog: ['auditlog', 'audit', 'auditoria', 'logs', 'log'],
+  expenses: ['expenses', 'gastos'],
   stages: ['stages', 'etapas', 'pipelinestages', 'pipeline'],
   commissions: ['commissions', 'comisiones', 'commissionsettings', 'commissionconfig', 'commission'],
   settings: ['settings', 'config', 'configuracion', 'ajustes'],
@@ -83,7 +85,7 @@ function extractCollections(raw) {
     }
   };
   visit(coerceJSON(raw), 0);
-  for (const k of ['users', 'companies', 'contacts', 'deals', 'tasks', 'messages', 'auditLog']) {
+  for (const k of ['users', 'companies', 'contacts', 'deals', 'tasks', 'messages', 'auditLog', 'expenses']) {
     const v = out[k];
     if (v && !Array.isArray(v) && typeof v === 'object') out[k] = Object.entries(v).map(([id, r]) => ({ id, ...r }));
     if (!Array.isArray(out[k])) out[k] = [];
@@ -193,6 +195,7 @@ async function importBackup(raw, { mode = 'merge', actor }) {
       await client.query('DELETE FROM companies');
       await client.query('DELETE FROM messages');
       await client.query('DELETE FROM automation_log');
+      if (data.expenses.length) await client.query('DELETE FROM expenses');
     }
 
     // ---------------- usuarios
@@ -429,6 +432,24 @@ async function importBackup(raw, { mode = 'merge', actor }) {
           str(r.get('entityLabel', 'entity_label', 'label')), str(r.get('detail', 'detalle', 'details')), JSON.stringify(r.extra())],
       );
       count('auditLog', res.rowCount ? 'inserted' : 'skipped');
+    }
+
+    // ---------------- gastos de operación
+    for (const rec of data.expenses) {
+      const r = reader(rec);
+      const id = str(r.get('id', '_id')) || hashId('g', rec);
+      const year = toNum(r.get('year', 'anio'));
+      const month = toNum(r.get('month', 'mes'));
+      if (!year || !month || month < 1 || month > 12) { count('expenses', 'skipped'); continue; }
+      const byId = str(r.get('createdBy', 'created_by'));
+      const res = await client.query(
+        `INSERT INTO expenses (id, year, month, category, description, amount, created_by, created_at, extra)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
+        [id, year, month, str(r.get('category', 'categoria')) || 'Otros', str(r.get('description', 'descripcion')),
+          Math.max(0, toNum(r.get('amount', 'valor', 'monto')) ?? 0), byId ? userMap.get(byId) || byId : null,
+          toTs(r.get('createdAt', 'created_at')) || new Date().toISOString(), JSON.stringify(r.extra())],
+      );
+      count('expenses', res.rowCount ? 'inserted' : 'skipped');
     }
 
     if (orphaned) warnings.push(`${orphaned} registro(s) tenían un responsable inexistente y se asignaron a ${actor.name}.`);

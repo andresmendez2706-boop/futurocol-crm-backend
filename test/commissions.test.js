@@ -132,3 +132,46 @@ test('panel: "Contactos" cuenta solo los leads creados en el período elegido', 
   assert.equal(jan.leadsByStage.reduce((a, x) => a + x.count, 0), 1);
   assert.equal(jan.perAsesor.find((p) => p.userId === 'u_a1').leads, 1);
 });
+
+test('gastos de operación: ingreso manual del admin y descuento en el balance', async () => {
+  const s = await seed();
+  await db.query("UPDATE users SET commission_rate = 25 WHERE id = 'u_admin'");
+  const c = (await s.a1.post('/api/contacts', { name: 'G' })).body;
+  const d = (await s.a1.post('/api/deals', { title: 'g', contactId: c.id, value: 10000000 })).body;
+  await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
+  await db.query("UPDATE deals SET close_date = '2026-05-10' WHERE id = $1", [d.id]);
+
+  // Solo el admin puede registrar gastos
+  assert.equal((await s.a1.post('/api/admin/expenses', { year: 2026, month: 5, category: 'Marketing', amount: 1 })).status, 403);
+  assert.equal((await s.admin.post('/api/admin/expenses', { year: 2026, month: 5, category: 'Marketing', amount: -5 })).status, 400);
+  const mk = (await s.admin.post('/api/admin/expenses', { year: 2026, month: 5, category: 'Marketing', description: 'Meta Ads', amount: 300000 })).body;
+  await s.admin.post('/api/admin/expenses', { year: 2026, month: 5, category: 'Planes móviles', amount: 150000 });
+
+  let m = (await s.admin.get('/api/admin/finance?year=2026')).body.months[4];
+  assert.equal(m.adminGross, 2500000);
+  assert.equal(m.asesoresCommission, 1000000);
+  assert.equal(m.afterCommissions, 1500000);
+  assert.equal(m.expensesTotal, 450000);
+  assert.equal(m.net, 1050000); // 2.500.000 − 1.000.000 − 450.000
+
+  await s.admin.patch(`/api/admin/expenses/${mk.id}`, { amount: 500000 });
+  m = (await s.admin.get('/api/admin/finance?year=2026')).body.months[4];
+  assert.equal(m.expensesTotal, 650000);
+
+  // Copiar gastos fijos al mes siguiente
+  const cp = (await s.admin.post('/api/admin/expenses/copy', { fromYear: 2026, fromMonth: 5, toYear: 2026, toMonth: 6 })).body;
+  assert.equal(cp.copied, 2);
+  const f = (await s.admin.get('/api/admin/finance?year=2026')).body;
+  assert.equal(f.months[5].expensesTotal, 650000);
+  assert.equal(f.months[5].net, -650000); // sin facturación en junio
+  assert.equal(f.totals.expensesTotal, 1300000);
+
+  await s.admin.del(`/api/admin/expenses/${mk.id}`);
+  assert.equal((await s.admin.get('/api/admin/finance?year=2026')).body.months[4].expensesTotal, 150000);
+
+  // Los gastos viajan en la copia de seguridad
+  const backup = (await s.admin.get('/api/admin/backup')).body;
+  assert.equal(backup.expenses.length, 3);
+  const logs = await db.query("SELECT count(*)::int AS n FROM audit_log WHERE entity_type = 'gasto'");
+  assert.ok(logs.rows[0].n >= 4);
+});

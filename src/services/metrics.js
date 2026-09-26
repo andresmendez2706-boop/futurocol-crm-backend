@@ -7,11 +7,11 @@ const db = require('../db');
 const repo = require('./repo');
 const settings = require('./settings');
 const { isAdmin } = require('../permissions');
-const { WON, CLOSED_STAGES } = require('../constants');
+const { WON, CLOSED_STAGES, EXPENSE_CATEGORIES } = require('../constants');
 const {
   dealProbability, billingDate, inPeriod, isWon, isLost, isOpen, computeCommissions, taskLight, round2, effectiveRate,
 } = require('./rules');
-const { todayISO, mapTask } = require('../util');
+const { todayISO, mapTask, mapExpense } = require('../util');
 
 const sum = (arr, f) => arr.reduce((s, x) => s + Number(f(x) || 0), 0);
 const monthKey = (d) => String(d).slice(0, 7);
@@ -230,12 +230,15 @@ async function funnel(viewer, { userId, period } = {}) {
  * Balance financiero del admin, mes a mes, para un año:
  *   ganancia admin  = tasa del admin × facturación total del mes
  *   comisión asesor = tasa de cada asesor × lo que él facturó ese mes
- *   ganancia neta   = ganancia admin − comisiones de asesores
+ *   gastos          = gastos de operación del mes (marketing, planes móviles…), ingresados a mano
+ *   ganancia neta   = ganancia admin − comisiones de asesores − gastos
  */
 async function finance(viewer, year) {
-  const [users, deals, commissionsCfg] = await Promise.all([
+  const [users, deals, commissionsCfg, expenseRows] = await Promise.all([
     repo.listAllUsersFull(), repo.listAllDeals(), settings.getCommissions(),
+    db.query('SELECT * FROM expenses WHERE year = $1 ORDER BY month, created_at', [year]),
   ]);
+  const expenses = expenseRows.rows.map(mapExpense);
   const me = users.find((u) => u.id === viewer.id) || { ...viewer, role: 'admin' };
   const adminRate = effectiveRate(me, commissionsCfg);
   const won = deals.filter(isWon);
@@ -248,6 +251,9 @@ async function finance(viewer, year) {
     const asesores = comm.asesores.map((a) => ({
       ...a, dealIds: monthWon.filter((d) => d.assignedTo === a.userId).map((d) => d.id),
     }));
+    const monthExpenses = expenses.filter((e) => e.month === month);
+    const expensesTotal = round2(monthExpenses.reduce((acc, e) => acc + Number(e.amount), 0));
+    const afterCommissions = round2(adminGross - comm.asesoresTotal);
     months.push({
       month,
       billing: comm.totalBilling,
@@ -255,7 +261,11 @@ async function finance(viewer, year) {
       dealIds: monthWon.map((d) => d.id),
       adminGross,
       asesoresCommission: comm.asesoresTotal,
-      net: round2(adminGross - comm.asesoresTotal),
+      afterCommissions,
+      expenses: monthExpenses,
+      expensesTotal,
+      // Ganancia real = ganancia admin − comisiones de asesores − gastos de operación
+      net: round2(afterCommissions - expensesTotal),
       asesores,
     });
   }
@@ -263,10 +273,12 @@ async function finance(viewer, year) {
   return {
     year,
     adminRate,
+    expenseCategories: EXPENSE_CATEGORIES,
     months,
     totals: {
       billing: total('billing'), adminGross: total('adminGross'),
-      asesoresCommission: total('asesoresCommission'), net: total('net'),
+      asesoresCommission: total('asesoresCommission'), afterCommissions: total('afterCommissions'),
+      expensesTotal: total('expensesTotal'), net: total('net'),
       wonCount: months.reduce((acc, m) => acc + m.wonCount, 0),
     },
   };
