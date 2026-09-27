@@ -659,3 +659,10 @@ td.negative, td.negative b { color: var(--red); }
 @media (display-mode: standalone) {
   body { overscroll-behavior-y: contain; }
 }
+.source-code { position: relative; }
+.source-code .code-important { color: #ff6b6b; font-weight: 600; }
+.source-code .code-important.current { text-decoration: underline wavy rgba(255, 107, 107, .7); text-underline-offset: 4px; }
+.code-legend { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; margin-bottom: 12px; font-size: .85rem; color: var(--muted); }
+.code-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.code-legend .lg-green { background: #4ade80; }
+.code-legend .lg-red { background: #ff6b6b; }
