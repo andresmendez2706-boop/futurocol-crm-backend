@@ -416,6 +416,9 @@ body.is-login { background: var(--grad); min-height: 100vh; }
 .source-files button { text-align: left; border: 0; background: none; padding: 7px 10px; border-radius: 8px; cursor: pointer; font: inherit; font-family: ui-monospace, monospace; font-size: .8rem; color: var(--text); }
 .source-files button.active, .source-files button:hover { background: var(--primary-50); color: var(--primary); }
 .source-code { margin: 0; background: #1e1b2e; color: #e8e6f3; border-radius: var(--radius); padding: 16px; overflow: auto; max-height: calc(100vh - 170px); font-size: .8rem; line-height: 1.5; }
+.source-code, .source-code code { color: #4ade80; }
+.source-code code { background: none; padding: 0; border-radius: 0; font-family: ui-monospace, "Cascadia Code", Consolas, monospace; }
+.source-code::selection, .source-code code::selection { background: rgba(74, 222, 128, .25); }
 
 /* ---------- modales propios */
 #modal-root { position: relative; z-index: 100; }
