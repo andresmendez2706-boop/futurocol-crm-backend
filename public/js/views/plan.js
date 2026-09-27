@@ -13,7 +13,7 @@ const MODES = [{ value: 'dia', label: 'Día' }, { value: 'semana', label: 'Seman
 
 const ui = () => (S.ui.plan ||= {
   mode: S.me.prefs?.planMode || 'semana',
-  layout: S.me.prefs?.planLayout || 'panel',
+  layout: S.me.prefs?.planLayout || (window.matchMedia('(max-width: 860px)').matches ? 'lista' : 'panel'),
   anchor: S.today,
   owner: isAdmin() ? '' : S.me.id,
 });

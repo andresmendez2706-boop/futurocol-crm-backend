@@ -53,6 +53,15 @@ Qué hace la importación:
 - Importar dos veces el mismo archivo no duplica nada.
 - El importador acepta varios formatos: colecciones en la raíz del JSON, dentro de `data`, o como strings JSON al estilo `localStorage` (`crm_contacts: "[...]"`). **Pruébalo primero con una copia real en un entorno de prueba**, porque no tuve acceso a un backup del CRM original para validar los nombres exactos de sus campos.
 
+## App para celular (PWA)
+
+El CRM se puede instalar en el celular como una app (con ícono, pantalla completa y barra de pestañas abajo), sin tiendas de apps:
+
+- **Android (Chrome):** abrir el CRM → menú ⋮ → **Instalar app** (o el botón "📲 Instalar app" del menú lateral).
+- **iPhone (Safari):** abrir el CRM → **Compartir** → **Agregar a pantalla de inicio**.
+
+La app usa siempre la versión publicada más reciente (el *service worker* va primero a la red) y nunca guarda los datos del CRM en el teléfono; sin conexión muestra un aviso.
+
 ## Pruebas
 
 ```bash

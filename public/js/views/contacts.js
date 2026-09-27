@@ -12,7 +12,8 @@ export const id = 'contactos';
 export const title = 'Contactos';
 export const navIcon = 'contactos';
 
-const ui = () => (S.ui.contacts ||= { q: '', year: '', month: '', layout: S.me.prefs?.contactsLayout || 'lista' });
+const phone = () => window.matchMedia('(max-width: 860px)').matches;
+const ui = () => (S.ui.contacts ||= { q: '', year: '', month: '', layout: S.me.prefs?.contactsLayout || (phone() ? 'panel' : 'lista') });
 
 function filtered() {
   const { q, year, month } = ui();

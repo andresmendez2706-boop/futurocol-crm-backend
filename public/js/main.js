@@ -4,7 +4,7 @@ import {
   S, api, loadAll, esc, icon, initials, isAdmin, savePrefs, setUnauthorizedHandler,
 } from './core.js';
 import {
-  formModal, toast, showError, allModals, closeAllModals,
+  formModal, toast, showError, allModals, closeAllModals, alertDialog,
 } from './ui.js';
 import * as panel from './views/panel.js';
 import * as companies from './views/companies.js';
@@ -113,15 +113,46 @@ function renderShell() {
         <div class="search-results" id="search-results" hidden></div>
       </div>
       <nav class="nav">${nav}</nav>
+      <button class="install-btn" data-action="install-app" hidden>📲 Instalar app en este dispositivo</button>
       <div class="live-indicator" id="live-indicator" title="Sincronización en tiempo real"><span></span>En línea</div>
     </aside>
+    <div class="sidebar-backdrop" data-action="toggle-sidebar"></div>
     <div class="content">
       <header class="topbar">
+        <img src="/img/logo.png" alt="" class="topbar-logo">
+        <span class="topbar-title" id="topbar-title">Futurocol Academy</span>
         <button class="icon-btn" data-action="toggle-sidebar" title="Menú">${icon('menu')}</button>
-        <span class="topbar-title">Futurocol Academy CRM</span>
       </header>
       <main id="main" class="main"></main>
+      <button class="fab" id="fab" data-action="fab" hidden title="Nuevo">${icon('plus')}</button>
+      <nav class="tabbar">${TABS.map(([v, label, ic]) => `<a href="#/${v}" class="tab" data-nav="${v}">${icon(ic)}<span>${label}</span></a>`).join('')}
+        <button class="tab" data-action="toggle-sidebar">${icon('menu')}<span>Más</span></button></nav>
     </div>`;
+  updateInstallButton();
+}
+
+// ------------------------------------------------------------------ experiencia tipo app (celular)
+// Barra inferior con las secciones de uso diario; el resto queda en "Más" (menú lateral).
+const TABS = [['panel', 'Panel', 'panel'], ['contactos', 'Contactos', 'contactos'], ['negocios', 'Negocios', 'negocios'], ['tareas', 'Tareas', 'plan']];
+// Botón flotante "+" según la sección.
+const FAB = { contactos: 'new-contact', negocios: 'new-deal', tareas: 'new-task', empresas: 'new-company', usuarios: 'new-user' };
+
+// Instalación (Android/Chrome muestra el aviso nativo; en iPhone se explican los pasos).
+let installPrompt = null;
+const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+  updateInstallButton();
+});
+window.addEventListener('appinstalled', () => { installPrompt = null; updateInstallButton(); toast('App instalada'); });
+function updateInstallButton() {
+  const btn = document.querySelector('[data-action=install-app]');
+  if (btn) btn.hidden = isStandalone() || !(installPrompt || isIOS());
+}
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
 }
 
 // ------------------------------------------------------------------ render con preservación de foco/scroll
@@ -175,8 +206,12 @@ export async function render() {
   main.innerHTML = html;
   view.mount?.(main);
   restoreUi(st);
-  document.querySelectorAll('.nav-item').forEach((a) => a.classList.toggle('active', a.dataset.nav === current));
+  document.querySelectorAll('.nav-item, .tab[data-nav]').forEach((a) => a.classList.toggle('active', a.dataset.nav === current));
   document.title = `${view.title} · Futurocol Academy CRM`;
+  const tt = document.getElementById('topbar-title');
+  if (tt) tt.textContent = view.title;
+  const fab = document.getElementById('fab');
+  if (fab) fab.hidden = !FAB[current];
 }
 
 // Recarga los datos del servidor y vuelve a pintar (vista + modales abiertos).
@@ -295,6 +330,17 @@ Object.assign(actions, {
     renderLogin();
   },
   'toggle-sidebar': () => document.body.classList.toggle('sidebar-open'),
+  fab: () => { const a = FAB[current]; if (a) actions[a]?.(document.getElementById('fab')); },
+  'install-app': async () => {
+    if (installPrompt) {
+      installPrompt.prompt();
+      await installPrompt.userChoice.catch(() => {});
+      installPrompt = null;
+      updateInstallButton();
+      return;
+    }
+    await alertDialog('En iPhone o iPad:\n1. Abre el CRM en Safari.\n2. Toca el botón Compartir (cuadro con flecha hacia arriba).\n3. Elige "Agregar a pantalla de inicio".\n4. Toca "Agregar".\n\nLa app aparecerá con el logo de Futurocol en tu pantalla de inicio.', { title: 'Instalar la app' });
+  },
   'change-password': () => formModal({
     title: 'Cambiar contraseña',
     size: 'sm',

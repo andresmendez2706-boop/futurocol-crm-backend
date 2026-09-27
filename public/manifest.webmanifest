@@ -1,0 +1,22 @@
+{
+  "name": "Futurocol Academy CRM",
+  "short_name": "Futurocol",
+  "description": "CRM de Futurocol Academy: contactos, negocios, tareas y comisiones.",
+  "lang": "es-CO",
+  "start_url": "/?app=1",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#4527A0",
+  "theme_color": "#4527A0",
+  "icons": [
+    { "src": "/img/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "/img/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/img/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Tareas", "url": "/#/tareas", "icons": [{ "src": "/img/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Contactos", "url": "/#/contactos", "icons": [{ "src": "/img/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Negocios", "url": "/#/negocios", "icons": [{ "src": "/img/icon-192.png", "sizes": "192x192" }] }
+  ]
+}

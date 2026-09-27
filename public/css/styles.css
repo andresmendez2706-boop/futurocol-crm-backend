@@ -577,3 +577,82 @@ td.negative, td.negative b { color: var(--red); }
 .ladder-scale { display: flex; justify-content: space-between; font-size: .7rem; color: rgba(255, 255, 255, .85); margin-top: 6px; }
 .ladder-foot { display: flex; justify-content: space-between; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
 .ladder-level { white-space: nowrap; }
+
+/* =====================================================================
+   Experiencia tipo app en celular (PWA)
+   ===================================================================== */
+.install-btn { margin-top: 12px; border: 1px dashed rgba(255, 255, 255, .6); background: rgba(255, 255, 255, .12); color: #fff; border-radius: 10px; padding: 9px 10px; font: inherit; font-weight: 600; cursor: pointer; }
+.install-btn:hover { background: rgba(255, 255, 255, .2); }
+.tabbar, .fab, .sidebar-backdrop, .topbar-logo { display: none; }
+
+@media (max-width: 860px) {
+  body { -webkit-tap-highlight-color: transparent; }
+  .topbar { padding: calc(8px + env(safe-area-inset-top)) 12px 8px; justify-content: space-between; }
+  .topbar-logo { display: block; width: 32px; height: 32px; border-radius: 50%; background: #fff; padding: 1px; }
+  .topbar-title { flex: 1; font-size: 1.05rem; }
+  .main { padding: 14px 12px calc(92px + env(safe-area-inset-bottom)); }
+  .page-head { margin-bottom: 12px; }
+  .page-head h1 { display: none; } /* el título ya va en la barra superior */
+  .page-head > div:first-child p { font-size: .85rem; }
+  .toolbar { gap: 6px; }
+  .toolbar .btn-primary[data-action^="new-"] { display: none; } /* en celular se usa el botón flotante "+" */
+  .seg { max-width: 100%; overflow-x: auto; }
+  .btn, .seg-btn, .input { min-height: 40px; }
+  .icon-btn { width: 40px; height: 40px; }
+
+  /* barra inferior de pestañas */
+  .tabbar {
+    display: grid; grid-template-columns: repeat(5, 1fr); position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+    background: rgba(255, 255, 255, .97); backdrop-filter: blur(8px); border-top: 1px solid var(--border);
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom)); box-shadow: 0 -4px 18px rgba(31, 27, 46, .08);
+  }
+  .tab { display: flex; flex-direction: column; align-items: center; gap: 2px; border: 0; background: none; color: var(--muted); font: inherit; font-size: .7rem; font-weight: 600; padding: 4px 0; text-decoration: none; border-radius: 10px; cursor: pointer; }
+  .tab .ico { width: 22px; height: 22px; }
+  .tab.active { color: var(--primary); }
+  .tab.active .ico { background: var(--primary-50); border-radius: 99px; padding: 2px 10px; width: 44px; box-sizing: content-box; }
+  .tab:hover { text-decoration: none; }
+
+  /* botón flotante "+" */
+  .fab { display: grid; place-items: center; position: fixed; right: 16px; bottom: calc(78px + env(safe-area-inset-bottom)); z-index: 41; width: 56px; height: 56px; border-radius: 18px; border: 0; background: var(--grad); color: #fff; box-shadow: 0 8px 22px rgba(69, 39, 160, .4); cursor: pointer; }
+  .fab[hidden] { display: none; }
+  .fab .ico { width: 26px; height: 26px; }
+
+  /* menú lateral como cajón */
+  .sidebar { z-index: 60; width: min(84vw, 300px); padding-top: calc(22px + env(safe-area-inset-top)); }
+  body.sidebar-open .sidebar-backdrop { display: block; position: fixed; inset: 0; z-index: 55; background: rgba(24, 16, 52, .45); }
+
+  /* modales como hoja completa */
+  .modal-backdrop { padding: 0; align-items: flex-end; }
+  .modal, .modal.sm, .modal.lg, .modal.xl { max-width: none; width: 100%; max-height: 94vh; border-radius: 20px 20px 0 0; animation: sheet .22s ease; }
+  .modal-foot { padding-bottom: calc(14px + env(safe-area-inset-bottom)); position: sticky; bottom: 0; background: var(--surface); }
+  .modal-foot .btn { flex: 1; justify-content: center; }
+  .modal-foot .spacer { display: none; }
+  .modal.sm .modal-foot .btn { flex: 1 1 100%; }
+  #toast-root { left: 12px; right: 12px; bottom: calc(84px + env(safe-area-inset-bottom)); }
+  .toast { max-width: none; }
+
+  /* tarjetas y tablas */
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .stat-card { padding: 12px 14px; }
+  .stat-value { font-size: 1.3rem; }
+  .card { padding: 14px; border-radius: 14px; }
+  .table td, .table th { padding: 9px 10px; }
+  .cards-grid { grid-template-columns: 1fr; gap: 10px; }
+
+  /* kanban deslizable columna por columna */
+  .kanban { scroll-snap-type: x mandatory; gap: 10px; padding-bottom: 4px; }
+  .kanban-col { flex: 0 0 86vw; scroll-snap-align: start; height: calc(100vh - 330px); }
+  .summary-strip { gap: 6px 16px; padding: 10px 14px; }
+
+  /* tareas */
+  .plan-week { grid-template-columns: repeat(7, minmax(120px, 1fr)); }
+  .light-summary { gap: 8px; }
+  .light-box { padding: 10px; }
+  .light-box strong { font-size: 1.2rem; }
+}
+@keyframes sheet { from { transform: translateY(40px); opacity: .4; } }
+
+/* app instalada (modo standalone): sin barras del navegador */
+@media (display-mode: standalone) {
+  body { overscroll-behavior-y: contain; }
+}
