@@ -33,14 +33,21 @@ function fanOut(payload) {
 
 async function start() {
   if (listener) return;
-  listener = new Client({ connectionString: config.databaseUrl });
+  listener = new Client({ connectionString: config.databaseUrl, connectionTimeoutMillis: 10000 });
   listener.on('error', (err) => {
     console.error('[realtime] error de conexión LISTEN:', err.message);
     listener = null;
     setTimeout(() => start().catch(() => {}), 5000);
   });
-  await listener.connect();
-  await listener.query(`LISTEN ${CHANNEL}`);
+  try {
+    await listener.connect();
+    await listener.query(`LISTEN ${CHANNEL}`);
+  } catch (err) {
+    const l = listener;
+    listener = null; // permite reintentar más tarde
+    await l?.end().catch(() => {});
+    throw err;
+  }
   listener.on('notification', (msg) => {
     try {
       fanOut(JSON.parse(msg.payload));

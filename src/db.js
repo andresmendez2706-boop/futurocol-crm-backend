@@ -7,7 +7,13 @@ const config = require('./config');
 types.setTypeParser(1082, (v) => v);
 types.setTypeParser(1700, (v) => (v === null ? null : parseFloat(v)));
 
-const pool = new Pool({ connectionString: config.databaseUrl, max: Number(process.env.PG_POOL_MAX || 10) });
+const pool = new Pool({
+  connectionString: config.databaseUrl,
+  max: Number(process.env.PG_POOL_MAX || 10),
+  // Sin esto, si la base de datos no responde la conexión espera para siempre.
+  connectionTimeoutMillis: Number(process.env.PG_CONNECT_TIMEOUT_MS || 10000),
+});
+pool.on('error', (err) => console.error('[db] error en conexión inactiva:', err.message));
 
 function query(text, params) {
   return pool.query(text, params);
