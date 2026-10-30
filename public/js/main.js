@@ -294,6 +294,7 @@ function setPeriod(patch) {
   render();
 }
 Object.assign(changes, {
+  'ally-filter': (el) => { S.ally = el.value; savePrefs({ ally: el.value }); render(); },
   'period-type': (el) => setPeriod({ type: el.value }),
   'period-month': (el) => setPeriod({ month: Number(el.value) }),
   'period-year': (el) => setPeriod({ year: Number(el.value) }),

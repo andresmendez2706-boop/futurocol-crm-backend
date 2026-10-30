@@ -1,8 +1,8 @@
 import {
-  S, api, esc, icon, options, pct, CURRENCIES, currencyCode,
+  S, api, esc, icon, options, pct, CURRENCIES, currencyCode, allies, allyById,
 } from '../core.js';
 import {
-  openModal, confirmDialog, toast, alertDialog,
+  openModal, confirmDialog, toast, alertDialog, formModal,
 } from '../ui.js';
 
 export const id = 'configuracion';
@@ -23,7 +23,21 @@ export function render() {
   const c = S.settings.commissions;
   const openCount = stages.filter((s) => !s.protected).length;
   return `
-    <div class="page-head"><div><h1>Configuración</h1><p class="muted">Moneda, etapas del pipeline y comisiones — sin tocar código</p></div></div>
+    <div class="page-head"><div><h1>Configuración</h1><p class="muted">Aliados, moneda, etapas del pipeline y comisiones — sin tocar código</p></div></div>
+    <section class="card">
+      <div class="section-head"><h3>Aliados (universidades)</h3>
+        <button class="btn btn-primary" data-action="ally-new">${icon('plus')} Nuevo aliado</button></div>
+      <p class="muted">Cada aliado le paga a Futurocol su propio porcentaje sobre lo que se le factura y tiene su propia lista de programas. Los negocios, contactos y la facturación se pueden ver por aliado o unificados.</p>
+      <div class="table-wrap"><table class="table compact">
+        <thead><tr><th>Aliado</th><th class="num">% que paga a Futurocol</th><th class="num">Programas</th><th class="num">Negocios</th><th>Estado</th><th></th></tr></thead>
+        <tbody>${allies().map((a) => `<tr>
+          <td><span class="chip chip-ally">${esc(a.name)}</span></td><td class="num"><b>${pct(a.commissionRate)}</b></td>
+          <td class="num">${a.programs.length}</td><td class="num">${S.deals.filter((d) => d.allyId === a.id).length}</td>
+          <td>${a.active ? '<span class="chip chip-sm">Activo</span>' : '<span class="chip chip-sm chip-warn">Inactivo</span>'}</td>
+          <td class="actions"><button class="icon-btn" data-action="ally-edit" data-id="${esc(a.id)}" title="Editar">${icon('edit')}</button></td>
+        </tr>`).join('')}</tbody>
+      </table></div>
+    </section>
     <section class="card">
       <h3>Moneda</h3>
       <p class="muted">Elige la moneda en la que se muestran todos los valores del CRM: negocios, facturación, comisiones y balance financiero.</p>
@@ -105,7 +119,33 @@ async function saveStages(moveDeals = {}) {
   }
 }
 
+function allyForm(ally = null) {
+  const a = ally || { active: true, programs: [] };
+  formModal({
+    title: ally ? `Editar aliado · ${ally.name}` : 'Nuevo aliado',
+    fields: [
+      { name: 'name', label: 'Nombre (ej. UNIR)', value: a.name, required: true },
+      { name: 'commissionRate', label: '% que le paga a Futurocol', type: 'number', min: 0, max: 100, step: 0.1, value: a.commissionRate ?? '', required: true },
+      { name: 'programs', label: 'Programas (uno por línea)', type: 'textarea', rows: 10, value: a.programs.join('\n'), full: true, hint: 'Estos programas aparecen al crear contactos y negocios de este aliado.' },
+      ally ? { name: 'active', label: 'Activo (si lo desactivas, no se pueden crear negocios nuevos con él; su historia se conserva)', type: 'checkbox', value: a.active, full: true } : null,
+    ],
+    onSubmit: async (v) => {
+      const body = {
+        name: v.name, commissionRate: Number(v.commissionRate),
+        programs: String(v.programs || '').split(/\r?\n/).map((x) => x.trim()).filter(Boolean),
+      };
+      if (ally) body.active = !!v.active;
+      if (ally) await api('PATCH', `/api/settings/allies/${ally.id}`, body);
+      else await api('POST', '/api/settings/allies', body);
+      toast(ally ? 'Aliado actualizado' : 'Aliado creado');
+      await window.crm.refresh();
+    },
+  });
+}
+
 export const actions = {
+  'ally-new': () => allyForm(),
+  'ally-edit': (el) => allyForm(allyById(el.dataset.id)),
   'stage-add': () => {
     const d = draft();
     const idx = d.findIndex((s) => s.protected);

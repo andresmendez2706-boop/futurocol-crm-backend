@@ -10,7 +10,8 @@ const repo = require('../services/repo');
 const settings = require('../services/settings');
 const { planStageChange } = require('../services/stageChange');
 const { resolveAssignee, userName } = require('../services/ownership');
-const { PROGRAMS, DEAL_TYPES } = require('../constants');
+const { resolveAlly, assertProgram } = require('../services/allies');
+const { DEAL_TYPES } = require('../constants');
 const { toCSV } = require('../csv');
 const {
   ah, HttpError, newId, mapDeal, buildSet,
@@ -26,7 +27,8 @@ const base = {
   contactId: optText(100),
   value: optNumber(0, 1e15),
   dealType: nullableEnum(DEAL_TYPES),
-  product: nullableEnum(PROGRAMS),
+  product: optText(200), // se valida contra los programas del aliado
+  allyId: optText(100),
   convocatoria: optText(200),
   probability: z.preprocess((v) => (v === '' ? null : v === undefined || v === null ? v : Number(v)),
     z.number().int().min(0).max(100).nullable().optional()),
@@ -51,20 +53,24 @@ router.get('/', ah(async (req, res) => res.json(await repo.listDeals(req.user)))
 router.post('/', ah(async (req, res) => {
   const data = parse(createSchema, req.body);
   await assertContact(req.user, data.contactId);
+  // Aliado: el indicado, o el del contacto, o el del asesor.
+  const contactAlly = data.contactId ? (await repo.getRow('contacts', data.contactId))?.ally_id : null;
+  const ally = await resolveAlly(req.user, data.allyId || contactAlly);
+  assertProgram(ally, data.product, 'programa');
   const stages = await settings.getStages();
   const stage = data.stage || stages[0].id;
   const plan = planStageChange({ current: null, nextStage: stage, lossReason: data.lossReason, stages, user: req.user });
   const assignedTo = await resolveAssignee(req.user, data.assignedTo);
   const { rows } = await db.query(
     `INSERT INTO deals (id, title, contact_id, value, stage, deal_type, product, convocatoria, probability,
-       expected_close_date, close_date, competitor, next_step, loss_reason, assigned_to, stage_history)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
+       expected_close_date, close_date, competitor, next_step, loss_reason, assigned_to, stage_history, ally_id)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
     [newId('d'), data.title, data.contactId ?? null, data.value ?? 0, stage, data.dealType ?? null, data.product ?? null,
       data.convocatoria ?? null, data.probability ?? null, data.expectedCloseDate ?? null, plan.columns.close_date ?? null,
       data.competitor ?? null, data.nextStep ?? null, plan.columns.loss_reason ?? data.lossReason ?? null, assignedTo,
-      JSON.stringify([plan.entry])],
+      JSON.stringify([plan.entry]), ally.id],
   );
-  await audit({ by: req.user, action: 'creación', entityType: 'negocio', entityLabel: data.title, detail: plan.detail });
+  await audit({ by: req.user, action: 'creación', entityType: 'negocio', entityLabel: data.title, detail: `${ally.name} · ${plan.detail}` });
   realtime.notifyChange('deals');
   res.status(201).json(mapDeal(rows[0]));
 }));
@@ -87,6 +93,11 @@ router.patch('/:id', ah(async (req, res) => {
       expected_close_date: data.expectedCloseDate, competitor: data.competitor, next_step: data.nextStep,
       loss_reason: data.lossReason,
     };
+    if (data.allyId !== undefined || data.product) {
+      const ally = await resolveAlly(req.user, data.allyId || current.ally_id, client);
+      assertProgram(ally, data.product !== undefined ? data.product : current.product, 'programa');
+      cols.ally_id = ally.id;
+    }
     // No se puede quitar el motivo a un negocio perdido.
     if (current.stage === 'perdido' && data.lossReason === null && data.stage === undefined) {
       throw new HttpError(422, 'Un negocio perdido debe conservar su motivo de pérdida', { code: 'LOSS_REASON_REQUIRED' });
@@ -139,15 +150,16 @@ router.delete('/:id', requireAdmin, ah(async (req, res) => {
 router.get('/export.csv', requireAdmin, ah(async (req, res) => {
   const stages = await settings.getStages();
   const { rows } = await db.query(
-    `SELECT d.*, c.name AS contact_name, u.email AS owner_email FROM deals d
-       LEFT JOIN contacts c ON c.id = d.contact_id LEFT JOIN users u ON u.id = d.assigned_to ORDER BY d.created_at`,
+    `SELECT d.*, c.name AS contact_name, u.email AS owner_email, al.name AS ally_name FROM deals d
+       LEFT JOIN contacts c ON c.id = d.contact_id LEFT JOIN users u ON u.id = d.assigned_to
+       LEFT JOIN allies al ON al.id = d.ally_id ORDER BY d.created_at`,
   );
   const data = rows.map((r) => ({
-    ...mapDeal(r), contactName: r.contact_name, ownerEmail: r.owner_email,
+    ...mapDeal(r), contactName: r.contact_name, ownerEmail: r.owner_email, allyName: r.ally_name,
     stageLabel: stages.find((s) => s.id === r.stage)?.label || r.stage,
   }));
   const cols = [
-    ['id', 'id'], ['title', 'titulo'], ['contactName', 'contacto'], ['value', 'valor'], ['stageLabel', 'etapa'],
+    ['id', 'id'], ['allyName', 'aliado'], ['title', 'titulo'], ['contactName', 'contacto'], ['value', 'valor'], ['stageLabel', 'etapa'],
     ['dealType', 'tipo'], ['product', 'programa'], ['convocatoria', 'convocatoria'], ['probability', 'probabilidad'],
     ['expectedCloseDate', 'cierre_esperado'], ['closeDate', 'fecha_cierre'], ['competitor', 'competidor'],
     ['nextStep', 'siguiente_paso'], ['lossReason', 'motivo_perdida'], ['ownerEmail', 'responsable'], ['createdAt', 'creado'],

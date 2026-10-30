@@ -69,17 +69,20 @@ function taskLight(task, today) {
  *    calculada mes a mes y sumada. No depende de sus propias ventas.
  * Se devuelven por separado, nunca sumadas.
  */
-function computeCommissions({ users, deals, commissions, period }) {
+function computeCommissions({ users, deals, commissions, period, allies = [] }) {
+  const allyRate = new Map(allies.map((a) => [a.id, Number(a.commissionRate)]));
   const won = deals.filter((d) => isWon(d) && inPeriod(billingDate(d), period));
   const byUser = new Map();
   for (const d of won) byUser.set(d.assignedTo, (byUser.get(d.assignedTo) || 0) + Number(d.value || 0));
   const totalBilling = won.reduce((s, d) => s + Number(d.value || 0), 0);
 
-  // Facturación total por mes (para la comisión de gerencia "mes a mes").
+  // Facturación total por mes y por aliado (para la ganancia de Futurocol "mes a mes").
   const byMonth = new Map();
   for (const d of won) {
     const k = billingDate(d).slice(0, 7);
-    byMonth.set(k, (byMonth.get(k) || 0) + Number(d.value || 0));
+    const m = byMonth.get(k) || new Map();
+    m.set(d.allyId || null, (m.get(d.allyId || null) || 0) + Number(d.value || 0));
+    byMonth.set(k, m);
   }
 
   const asesores = users.filter((u) => u.role === 'asesor').map((u) => {
@@ -88,11 +91,17 @@ function computeCommissions({ users, deals, commissions, period }) {
     return { userId: u.id, name: u.name, rate, billing, commission: round2((billing * rate) / 100) };
   });
 
+  // Comisión de gerencia: % que paga cada aliado × lo facturado de ese aliado (si un negocio no tiene
+  // aliado, se usa la tasa del admin). No depende de las ventas propias del admin.
   const admins = users.filter((u) => u.role === 'admin').map((u) => {
     const rate = effectiveRate(u, commissions);
-    const monthly = [...byMonth.entries()].sort().map(([month, billing]) => ({
-      month, billing, commission: round2((billing * rate) / 100),
-    }));
+    const rateOf = (allyId) => (allyRate.has(allyId) ? allyRate.get(allyId) : rate);
+    const monthly = [...byMonth.entries()].sort().map(([month, perAlly]) => {
+      let billing = 0;
+      let commission = 0;
+      for (const [allyId, v] of perAlly) { billing += v; commission += (v * rateOf(allyId)) / 100; }
+      return { month, billing, commission: round2(commission) };
+    });
     return {
       userId: u.id,
       name: u.name,

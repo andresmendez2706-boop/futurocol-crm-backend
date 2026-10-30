@@ -14,6 +14,7 @@ const {
   dealProbability, billingDate, inPeriod, isWon, isLost, isOpen, computeCommissions, taskLight, round2, effectiveRate, profitability,
 } = require('./rules');
 const { todayISO, mapTask, mapExpense } = require('../util');
+const { listAllies } = require('./allies');
 
 const sum = (arr, f) => arr.reduce((s, x) => s + Number(f(x) || 0), 0);
 const monthKey = (d) => String(d).slice(0, 7);
@@ -46,11 +47,16 @@ function closeDateOf(d) {
   return h?.at ? new Date(h.at).toISOString().slice(0, 10) : null;
 }
 
-async function dashboard(viewer, period) {
-  const [stages, commissionsCfg, contacts, deals, allUsers] = await Promise.all([
+// Filtro opcional por aliado (CUN, UNIR…); sin aliado = vista unificada de Futurocol.
+const byAlly = (allyId) => (r) => !allyId || r.allyId === allyId;
+
+async function dashboard(viewer, period, allyId = null) {
+  const [stages, commissionsCfg, allContacts, allViewerDeals, allUsers, allies] = await Promise.all([
     settings.getStages(), settings.getCommissions(), repo.listContacts(viewer), repo.listDeals(viewer),
-    repo.listAllUsersFull(),
+    repo.listAllUsersFull(), listAllies(),
   ]);
+  const contacts = allContacts.filter(byAlly(allyId));
+  const deals = allViewerDeals.filter(byAlly(allyId));
   const admin = isAdmin(viewer);
   const today = todayISO();
   const open = deals.filter(isOpen);
@@ -58,8 +64,8 @@ async function dashboard(viewer, period) {
 
   // Las comisiones se calculan SIEMPRE con todos los negocios (la del admin depende del total),
   // pero al asesor solo se le devuelve la suya.
-  const allDeals = admin ? deals : await repo.listAllDeals();
-  const comm = computeCommissions({ users: allUsers, deals: allDeals, commissions: commissionsCfg, period });
+  const allDeals = admin ? deals : (await repo.listAllDeals()).filter(byAlly(allyId));
+  const comm = computeCommissions({ users: allUsers, deals: allDeals, commissions: commissionsCfg, period, allies });
 
   // Contactos (leads) creados en el período seleccionado; "General" = todos.
   const periodContacts = contacts.filter((c) => inPeriod(new Date(c.createdAt).toISOString().slice(0, 10), period));
@@ -79,6 +85,11 @@ async function dashboard(viewer, period) {
     cards.adminCommission = me ? me.commission : comm.adminTotal;
     cards.adminRate = me ? me.rate : null;
     cards.academyBilling = comm.totalBilling;
+    // Ganancia de Futurocol por aliado en el período
+    cards.byAlly = allies.filter((a) => !allyId || a.id === allyId).map((a) => {
+      const billing = wonPeriod.filter((d) => d.allyId === a.id).reduce((s, d) => s + Number(d.value || 0), 0);
+      return { allyId: a.id, name: a.name, rate: a.commissionRate, billing, earnings: round2((billing * a.commissionRate) / 100) };
+    });
   } else {
     const me = comm.asesores.find((a) => a.userId === viewer.id);
     cards.myCommission = me ? me.commission : 0;
@@ -134,12 +145,14 @@ async function dashboard(viewer, period) {
   };
 }
 
-async function reports(period) {
+async function reports(period, allyId = null) {
   const admin = { role: 'admin' };
-  const [contacts, deals, users, commissionsCfg, taskRows] = await Promise.all([
+  const [allContacts, allDeals, users, commissionsCfg, taskRows, allies] = await Promise.all([
     repo.listContacts(admin), repo.listDeals(admin), repo.listAllUsersFull(), settings.getCommissions(),
-    db.query('SELECT * FROM tasks WHERE done = false AND due_date IS NOT NULL'),
+    db.query('SELECT * FROM tasks WHERE done = false AND due_date IS NOT NULL'), listAllies(),
   ]);
+  const contacts = allContacts.filter(byAlly(allyId));
+  const deals = allDeals.filter(byAlly(allyId));
   const today = todayISO();
   const won = deals.filter((d) => isWon(d) && inPeriod(billingDate(d), period));
   const lost = deals.filter((d) => isLost(d) && inPeriod(closeDateOf(d), period));
@@ -173,7 +186,7 @@ async function reports(period) {
 
   const overdue = taskRows.rows.map(mapTask).filter((t) => taskLight(t, today) === 'rojo');
   const billing = sum(won, (d) => d.value);
-  const comm = computeCommissions({ users, deals, commissions: commissionsCfg, period });
+  const comm = computeCommissions({ users, deals, commissions: commissionsCfg, period, allies });
 
   return {
     period,
@@ -195,9 +208,9 @@ async function reports(period) {
 }
 
 // Embudo de conversión: cuántos negocios alcanzaron cada etapa (según su historial).
-async function funnel(viewer, { userId, period } = {}) {
+async function funnel(viewer, { userId, period, allyId } = {}) {
   const stages = await settings.getStages();
-  let deals = await repo.listDeals(viewer);
+  let deals = (await repo.listDeals(viewer)).filter(byAlly(allyId));
   if (isAdmin(viewer) && userId) deals = deals.filter((d) => d.assignedTo === userId);
   if (period && period.type !== 'all') {
     deals = deals.filter((d) => inPeriod(new Date(d.createdAt).toISOString().slice(0, 10), period));
@@ -237,15 +250,19 @@ async function funnel(viewer, { userId, period } = {}) {
  *   rentabilidad    = ganancia neta ÷ ganancia admin (semáforo excelente / bueno / muy malo)
  * scope: { year } → los 12 meses de ese año · { all: true } → todos los meses con movimiento hasta hoy.
  */
-async function finance(viewer, { year, all = false } = {}) {
-  const [users, deals, commissionsCfg, expenseRows] = await Promise.all([
+async function finance(viewer, { year, all = false, allyId = null } = {}) {
+  const [users, allDeals, commissionsCfg, expenseRows, allies] = await Promise.all([
     repo.listAllUsersFull(), repo.listAllDeals(), settings.getCommissions(),
     all ? db.query('SELECT * FROM expenses ORDER BY year, month, created_at')
       : db.query('SELECT * FROM expenses WHERE year = $1 ORDER BY month, created_at', [year]),
+    listAllies(),
   ]);
-  const expenses = expenseRows.rows.map(mapExpense);
+  const deals = allDeals.filter(byAlly(allyId));
+  // Con un aliado elegido solo cuentan los gastos de ese aliado; en la vista unificada, todos.
+  const expenses = expenseRows.rows.map(mapExpense).filter((e) => !allyId || e.allyId === allyId);
   const me = users.find((u) => u.id === viewer.id) || { ...viewer, role: 'admin' };
   const adminRate = effectiveRate(me, commissionsCfg);
+  const rateOf = (id) => (allies.find((a) => a.id === id)?.commissionRate ?? adminRate);
   const won = deals.filter(isWon);
 
   // Meses a calcular
@@ -268,9 +285,25 @@ async function finance(viewer, { year, all = false } = {}) {
 
   const months = periods.map(({ year: y, month }) => {
     const period = { type: 'month', year: y, month };
-    const comm = computeCommissions({ users, deals, commissions: commissionsCfg, period });
+    const comm = computeCommissions({ users, deals, commissions: commissionsCfg, period, allies });
     const monthWon = won.filter((d) => inPeriod(billingDate(d), period));
-    const adminGross = round2((comm.totalBilling * adminRate) / 100);
+    // Ganancia de Futurocol = % de cada aliado × lo facturado de ese aliado
+    const allyRows = allies.filter((a) => !allyId || a.id === allyId).map((a) => {
+      const billing = monthWon.filter((d) => d.allyId === a.id).reduce((s, d) => s + Number(d.value || 0), 0);
+      const aExpenses = expenses.filter((e) => e.year === y && e.month === month && e.allyId === a.id)
+        .reduce((s, e) => s + Number(e.amount), 0);
+      return { allyId: a.id, name: a.name, rate: a.commissionRate, billing, gross: round2((billing * a.commissionRate) / 100), expenses: round2(aExpenses), commission: 0 };
+    });
+    const noAlly = monthWon.filter((d) => !d.allyId || !allies.some((a) => a.id === d.allyId));
+    const adminGross = round2(allyRows.reduce((s, a) => s + a.gross, 0)
+      + noAlly.reduce((s, d) => s + (Number(d.value || 0) * rateOf(d.allyId)) / 100, 0));
+    // Comisión de asesores por aliado (tasa individual × sus ventas de ese aliado)
+    const rateOfUser = new Map(comm.asesores.map((a) => [a.userId, a.rate]));
+    for (const a of allyRows) {
+      a.commission = round2(monthWon.filter((d) => d.allyId === a.allyId && rateOfUser.has(d.assignedTo))
+        .reduce((s, d) => s + (Number(d.value || 0) * rateOfUser.get(d.assignedTo)) / 100, 0));
+      a.net = round2(a.gross - a.commission - a.expenses);
+    }
     const monthExpenses = expenses.filter((e) => e.year === y && e.month === month);
     const expensesTotal = round2(monthExpenses.reduce((acc, e) => acc + Number(e.amount), 0));
     const afterCommissions = round2(adminGross - comm.asesoresTotal);
@@ -286,6 +319,7 @@ async function finance(viewer, { year, all = false } = {}) {
       expenses: monthExpenses,
       expensesTotal,
       net: round2(afterCommissions - expensesTotal),
+      byAlly: allyRows,
       asesores: comm.asesores.map((a) => ({
         ...a, dealIds: monthWon.filter((d) => d.assignedTo === a.userId).map((d) => d.id),
       })),
@@ -300,10 +334,18 @@ async function finance(viewer, { year, all = false } = {}) {
     expensesTotal: total('expensesTotal'), net: total('net'),
     wonCount: months.reduce((acc, m) => acc + m.wonCount, 0),
   };
+  const allyTotals = allies.filter((a) => !allyId || a.id === allyId).map((a) => {
+    const rows = months.map((m) => m.byAlly.find((x) => x.allyId === a.id)).filter(Boolean);
+    const t = (k) => round2(rows.reduce((s, x) => s + x[k], 0));
+    return { allyId: a.id, name: a.name, rate: a.commissionRate, billing: t('billing'), gross: t('gross'), commission: t('commission'), expenses: t('expenses'), net: t('net') };
+  });
   return {
     year: all ? null : year,
     all,
+    allyId,
     adminRate,
+    allies: allies.map((a) => ({ id: a.id, name: a.name, rate: a.commissionRate })),
+    byAlly: allyTotals,
     thresholds: PROFIT_THRESHOLDS,
     expenseCategories: EXPENSE_CATEGORIES,
     months,

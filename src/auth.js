@@ -63,7 +63,7 @@ async function requireAuth(req, res, next) {
     }
     req.user = {
       id: u.id, name: u.name, username: u.username, email: u.email, role: u.role,
-      commissionRate: u.commission_rate, prefs: u.prefs || {},
+      commissionRate: u.commission_rate, prefs: u.prefs || {}, allyIds: u.ally_ids || [],
     };
     next();
   } catch (err) {

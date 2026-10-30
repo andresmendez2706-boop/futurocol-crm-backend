@@ -28,6 +28,12 @@ async function assertUnique({ email: mail, username: user }, exceptId = null) {
   if (rows.some((r) => user && r.username === user.toLowerCase())) throw new HttpError(409, 'Ya existe un usuario con ese nombre de usuario');
 }
 
+async function assertAllies(ids) {
+  if (!ids || !ids.length) return;
+  const { rows } = await db.query('SELECT id FROM allies WHERE id = ANY($1)', [ids]);
+  if (rows.length !== new Set(ids).size) throw new HttpError(400, 'Alguno de los aliados indicados no existe');
+}
+
 router.get('/', ah(async (req, res) => {
   const { rows } = await db.query('SELECT * FROM users ORDER BY name');
   res.json(rows.map((r) => mapUser(r, { full: true })));
@@ -38,12 +44,15 @@ router.post('/', ah(async (req, res) => {
     name: reqText(120), username, email, role,
     password: z.string().min(8, 'mínimo 8 caracteres').max(200),
     commissionRate: optNumber(0, 100),
+    allyIds: z.array(z.string().max(100)).max(50).optional(),
   }), req.body);
   await assertUnique(data);
+  await assertAllies(data.allyIds);
   const { rows } = await db.query(
-    `INSERT INTO users (id, name, username, email, password_hash, role, commission_rate)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [newId('u'), data.name, data.username, data.email, await hashPassword(data.password), data.role, data.commissionRate ?? null],
+    `INSERT INTO users (id, name, username, email, password_hash, role, commission_rate, ally_ids)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [newId('u'), data.name, data.username, data.email, await hashPassword(data.password), data.role, data.commissionRate ?? null,
+      JSON.stringify(data.allyIds || [])],
   );
   await audit({ by: req.user, action: 'creación', entityType: 'usuario', entityLabel: data.name, detail: `Rol: ${data.role}` });
   realtime.notifyChange('users');
@@ -55,7 +64,9 @@ router.patch('/:id', ah(async (req, res) => {
     name: reqText(120).optional(), username: username.optional(), email: email.optional(), role: role.optional(),
     password: z.string().min(8, 'mínimo 8 caracteres').max(200).optional(),
     commissionRate: optNumber(0, 100),
+    allyIds: z.array(z.string().max(100)).max(50).optional(),
   }), req.body);
+  await assertAllies(data.allyIds);
   const { rows: cur } = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
   const user = cur[0];
   if (!user) throw new HttpError(404, 'Usuario no encontrado');
@@ -70,6 +81,7 @@ router.patch('/:id', ah(async (req, res) => {
     name: data.name, username: data.username, email: data.email, role: data.role,
     // Cambiar la tasa de un usuario solo afecta a ese usuario (columna individual).
     commission_rate: data.commissionRate,
+    ally_ids: data.allyIds === undefined ? undefined : JSON.stringify(data.allyIds),
   };
   if (data.password) fields.password_hash = await hashPassword(data.password);
   const set = buildSet(fields);
@@ -90,7 +102,7 @@ router.patch('/:id', ah(async (req, res) => {
       detail: `${user.commission_rate ?? 'por defecto'}% → ${data.commissionRate ?? 'por defecto'}%`,
     });
   }
-  const other = ['name', 'username', 'email', 'password'].filter((k) => data[k] !== undefined);
+  const other = ['name', 'username', 'email', 'password', 'allyIds'].filter((k) => data[k] !== undefined);
   if (other.length) {
     await audit({ by: req.user, action: 'edición', entityType: 'usuario', entityLabel: updated.name, detail: `Campos: ${other.join(', ')}` });
   }

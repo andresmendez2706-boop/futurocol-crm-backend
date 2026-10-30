@@ -1,5 +1,5 @@
 import {
-  S, api, esc, icon, pct, fmtDate, effectiveRate, userById,
+  S, api, esc, icon, pct, fmtDate, effectiveRate, userById, allies, allyName, multiAlly,
 } from '../core.js';
 import {
   formModal, confirmDialog, toast, emptyState,
@@ -24,9 +24,10 @@ export async function render() {
         <td><strong>${esc(u.name)}</strong>${u.id === S.me.id ? ' <span class="chip chip-sm">tú</span>' : ''}</td>
         <td>${esc(u.username)}</td>
         <td>${esc(u.email)}${/@sin-correo\.invalid$/.test(u.email) ? ' <span class="chip chip-sm chip-warn">actualizar</span>' : ''}</td>
-        <td><span class="chip chip-sm ${u.role === 'admin' ? 'chip-admin' : ''}">${u.role === 'admin' ? 'Administrador' : 'Asesor'}</span></td>
+        <td><span class="chip chip-sm ${u.role === 'admin' ? 'chip-admin' : ''}">${u.role === 'admin' ? 'Administrador' : 'Asesor'}</span>
+          ${multiAlly() && u.role !== 'admin' ? `<small class="block muted">${(u.allyIds || []).length ? esc(u.allyIds.map(allyName).join(', ')) : 'Todos los aliados'}</small>` : ''}</td>
         <td class="num">${pct(effectiveRate(u))}${u.commissionRate === null || u.commissionRate === undefined ? ' <small class="muted">(por defecto)</small>' : ''}
-          <small class="block muted">${u.role === 'admin' ? 'sobre facturación total' : 'sobre sus ventas'}</small></td>
+          <small class="block muted">${u.role === 'admin' ? 'ganancia: % de cada aliado' : 'sobre sus ventas'}</small></td>
         <td class="num">${S.contacts.filter((c) => c.assignedTo === u.id).length}</td>
         <td class="num">${S.deals.filter((d) => d.assignedTo === u.id).length}</td>
         <td>${fmtDate(u.createdAt)}</td>
@@ -38,6 +39,10 @@ export async function render() {
 function userForm(user = null) {
   const u = user || {};
   const scales = S.settings.commissions.asesorScales || [];
+  const mine = u.allyIds || [];
+  const allyChecks = multiAlly() ? `<div class="field full"><span>Aliados que vende (asesor)</span><div class="ally-checks">
+    ${allies().map((a) => `<label><input type="checkbox" data-ally-check value="${esc(a.id)}" ${mine.includes(a.id) ? 'checked' : ''}> ${esc(a.name)}</label>`).join('')}</div>
+    <small class="hint">Sin marcar ninguno = puede vender todos los aliados.</small></div>` : '';
   formModal({
     title: user ? `Editar usuario · ${user.name}` : 'Nuevo usuario',
     fields: [
@@ -48,13 +53,14 @@ function userForm(user = null) {
       {
         name: 'commissionRate', label: 'Tasa de comisión individual (%)', type: 'number', min: 0, max: 100, step: 0.1, list: 'rate-scales',
         value: u.commissionRate ?? '', placeholder: 'Vacío = valor por defecto del rol',
-        hint: `Asesor: sobre lo que él cierra. Admin: sobre la facturación total. Escalas sugeridas: ${scales.map(pct).join(' / ') || '—'}`,
+        hint: `Asesor: sobre lo que él cierra. La ganancia de Futurocol se define por aliado en Configuración. Escalas sugeridas: ${scales.map(pct).join(' / ') || '—'}`,
       },
       { name: 'password', label: user ? 'Nueva contraseña (opcional)' : 'Contraseña', type: 'password', required: !user, full: true, hint: 'Mínimo 8 caracteres.' },
     ],
-    extraBody: `<datalist id="rate-scales">${scales.map((s) => `<option value="${s}">`).join('')}</datalist>`,
-    onSubmit: async (v) => {
+    extraBody: `${allyChecks}<datalist id="rate-scales">${scales.map((s) => `<option value="${s}">`).join('')}</datalist>`,
+    onSubmit: async (v, m) => {
       const body = { ...v, commissionRate: v.commissionRate === '' ? null : Number(v.commissionRate) };
+      if (multiAlly()) body.allyIds = [...m.el.querySelectorAll('[data-ally-check]:checked')].map((x) => x.value);
       if (user && !body.password) delete body.password;
       if (user) await api('PATCH', `/api/users/${user.id}`, body);
       else await api('POST', '/api/users', body);

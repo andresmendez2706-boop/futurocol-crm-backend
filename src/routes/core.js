@@ -6,6 +6,7 @@ const express = require('express');
 const db = require('../db');
 const repo = require('../services/repo');
 const settings = require('../services/settings');
+const { listAllies } = require('../services/allies');
 const metrics = require('../services/metrics');
 const realtime = require('../realtime');
 const { parsePeriod } = require('../services/rules');
@@ -22,11 +23,12 @@ router.get('/bootstrap', ah(async (req, res) => {
     repo.listTasks(req.user), repo.listMessages(req.user), settings.getStages(), settings.getCommissions(),
     settings.getCurrency(),
   ]);
+  const allies = await listAllies();
   res.json({
     me: req.user,
     today: todayISO(),
     users, companies, contacts, deals, tasks, messages,
-    settings: { stages, commissions, currency },
+    settings: { stages, commissions, currency, allies },
     constants: {
       programs: constants.PROGRAMS, dealTypes: constants.DEAL_TYPES, taskTypes: constants.TASK_TYPES,
       activityTypes: constants.ACTIVITY_TYPES, closedStages: constants.CLOSED_STAGES,
@@ -44,11 +46,11 @@ router.patch('/me/prefs', ah(async (req, res) => {
 }));
 
 router.get('/stats/dashboard', ah(async (req, res) => {
-  res.json(await metrics.dashboard(req.user, parsePeriod(req.query)));
+  res.json(await metrics.dashboard(req.user, parsePeriod(req.query), req.query.ally || null));
 }));
 
 router.get('/stats/funnel', ah(async (req, res) => {
-  res.json(await metrics.funnel(req.user, { userId: req.query.userId || null, period: parsePeriod(req.query) }));
+  res.json(await metrics.funnel(req.user, { userId: req.query.userId || null, period: parsePeriod(req.query), allyId: req.query.ally || null }));
 }));
 
 router.get('/events', realtime.sseHandler);

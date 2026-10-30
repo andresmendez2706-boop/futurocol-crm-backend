@@ -96,6 +96,12 @@ configuración e importación y restauración de copias. GitHub Actions las corr
 - La tasa es individual (`users.commission_rate`): cambiar la de una persona no afecta a nadie más. Quien no tiene tasa propia usa la de su rol, definida en Configuración (admin, asesor y escalas sugeridas).
 - Se muestran en cuadros **separados**, nunca sumados. El filtro de período (mes, año o general) es el mismo en Panel, Negocios, Reportes y Embudo, y se guarda en las preferencias del usuario.
 
+### Aliados (universidades)
+- Futurocol vende el portafolio de varias universidades (p. ej. **CUN** y **UNIR**). Cada aliado tiene **su propio % que le paga a Futurocol** y **su lista de programas** (Configuración → Aliados).
+- Cada contacto y negocio pertenece a un aliado; cada asesor puede tener asignados uno o varios aliados (Usuarios). La API valida que el asesor solo venda sus aliados y que el programa sea del aliado.
+- **Ganancia de Futurocol** = Σ (% del aliado × facturación de ese aliado). La comisión del asesor sigue siendo su tasa individual.
+- Panel, Negocios, Contactos, Reportes, Embudo y Balance tienen el selector **"Todos los aliados / CUN / UNIR"**; el Balance muestra además la tabla **Ganancias por aliado** con el total de Futurocol. Los gastos pueden ser generales o de un aliado.
+
 ### Automatizaciones (`src/services/automations.js`, cada 15 min en el servidor)
 - Lead con 2 o más días en la primera etapa sin actividad → tarea "Contactar lead".
 - Negocio con 48 h o más en "Propuesta enviada" → tarea de seguimiento.

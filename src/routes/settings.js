@@ -9,13 +9,58 @@ const settings = require('../services/settings');
 const {
   PROTECTED_STAGES, WON, LOST, CURRENCIES,
 } = require('../constants');
-const { ah, HttpError } = require('../util');
+const { ah, HttpError, newId, buildSet } = require('../util');
+const { mapAlly, getAlly } = require('../services/allies');
 const { z, parse } = require('../validate');
 
 const router = express.Router();
 
 router.get('/', ah(async (req, res) => {
   res.json({ stages: await settings.getStages(), commissions: await settings.getCommissions(), currency: await settings.getCurrency() });
+}));
+
+// Aliados (universidades). El admin los crea y edita; no se eliminan (se desactivan) para no
+// perder la historia de sus negocios.
+const allySchema = z.object({
+  name: z.string().trim().min(1, 'nombre obligatorio').max(80),
+  commissionRate: z.coerce.number().min(0).max(100),
+  programs: z.array(z.string().trim().min(1).max(200)).max(300).default([]),
+  active: z.boolean().default(true),
+});
+const cleanPrograms = (list) => [...new Set(list.map((p) => p.trim()).filter(Boolean))];
+
+router.post('/allies', requireAdmin, ah(async (req, res) => {
+  const d = parse(allySchema, req.body);
+  const { rows } = await db.query(
+    'INSERT INTO allies (id, name, commission_rate, programs, active) VALUES ($1, $2, $3, $4, $5) RETURNING *',
+    [newId('ally'), d.name, d.commissionRate, JSON.stringify(cleanPrograms(d.programs)), d.active],
+  );
+  await audit({ by: req.user, action: 'creación', entityType: 'aliado', entityLabel: d.name, detail: `Paga ${d.commissionRate}% · ${d.programs.length} programa(s)` });
+  realtime.notifyChange('all');
+  res.status(201).json(mapAlly(rows[0]));
+}));
+
+router.patch('/allies/:id', requireAdmin, ah(async (req, res) => {
+  const d = parse(allySchema.partial(), req.body);
+  const old = await getAlly(req.params.id);
+  if (!old) throw new HttpError(404, 'Aliado no encontrado');
+  const set = buildSet({
+    name: d.name, commission_rate: d.commissionRate, active: d.active,
+    programs: d.programs === undefined ? undefined : JSON.stringify(cleanPrograms(d.programs)),
+  });
+  if (!set.count) return res.json(old);
+  const { rows } = await db.query(`UPDATE allies SET ${set.sql} WHERE id = $${set.count + 1} RETURNING *`, [...set.values, old.id]);
+  const changes = [];
+  if (d.commissionRate !== undefined && Number(d.commissionRate) !== old.commissionRate) changes.push(`% ${old.commissionRate} → ${d.commissionRate}`);
+  if (d.name && d.name !== old.name) changes.push(`nombre ${old.name} → ${d.name}`);
+  if (d.programs) changes.push(`${cleanPrograms(d.programs).length} programa(s)`);
+  if (d.active !== undefined && d.active !== old.active) changes.push(d.active ? 'activado' : 'desactivado');
+  await audit({
+    by: req.user, action: d.commissionRate !== undefined && Number(d.commissionRate) !== old.commissionRate ? 'cambio de comisión' : 'configuración',
+    entityType: 'aliado', entityLabel: rows[0].name, detail: changes.join(' · ') || null,
+  });
+  realtime.notifyChange('all');
+  res.json(mapAlly(rows[0]));
 }));
 
 // Moneda en la que se muestran todos los valores (solo cambia cómo se ven; no convierte montos).

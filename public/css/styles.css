@@ -675,3 +675,11 @@ td.negative, td.negative b { color: var(--red); }
 .currency-option:hover { border-color: var(--primary-50); background: #faf9fe; }
 .currency-option.active { border-color: var(--primary); background: var(--primary-50); }
 @media (max-width: 760px) { .currency-grid { grid-template-columns: 1fr; } }
+
+/* ---------- aliados */
+.chip-ally { background: #fff1e0; color: #a14a00; }
+.ally-picker { font-weight: 600; border-color: #f0c79a; }
+.ally-split { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: .85rem; color: rgba(255, 255, 255, .92); }
+.ally-split small { color: rgba(255, 255, 255, .75); }
+.ally-checks { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 8px 0; }
+.ally-checks label { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; color: var(--text); }

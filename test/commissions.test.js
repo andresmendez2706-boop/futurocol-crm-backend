@@ -91,7 +91,7 @@ test('cambiar la tasa de un asesor no afecta la del admin ni la de otros (API + 
 
 test('balance financiero: ganancia admin − comisiones de asesores, mes a mes', async () => {
   const s = await seed();
-  await db.query("UPDATE users SET commission_rate = 25 WHERE id = 'u_admin'");
+  await db.query("UPDATE allies SET commission_rate = 25 WHERE id = 'ally_cun'"); // CUN le paga 25% a Futurocol
   const c1 = (await s.a1.post('/api/contacts', { name: 'X1' })).body;
   const c2 = (await s.a2.post('/api/contacts', { name: 'X2' })).body;
   const d1 = (await s.a1.post('/api/deals', { title: 'd1', contactId: c1.id, value: 10000000 })).body;
@@ -104,7 +104,7 @@ test('balance financiero: ganancia admin − comisiones de asesores, mes a mes',
 
   assert.equal((await s.a1.get(`/api/admin/finance?year=${year}`)).status, 403);
   const f = (await s.admin.get(`/api/admin/finance?year=${year}`)).body;
-  assert.equal(f.adminRate, 25);
+  assert.equal(f.allies.find((a) => a.id === 'ally_cun').rate, 25);
   assert.equal(f.months.length, 12);
   const m = f.months[month - 1];
   assert.equal(m.billing, 10000000);
@@ -135,7 +135,7 @@ test('panel: "Contactos" cuenta solo los leads creados en el período elegido', 
 
 test('gastos de operación: ingreso manual del admin y descuento en el balance', async () => {
   const s = await seed();
-  await db.query("UPDATE users SET commission_rate = 25 WHERE id = 'u_admin'");
+  await db.query("UPDATE allies SET commission_rate = 25 WHERE id = 'ally_cun'"); // CUN le paga 25% a Futurocol
   const c = (await s.a1.post('/api/contacts', { name: 'G' })).body;
   const d = (await s.a1.post('/api/deals', { title: 'g', contactId: c.id, value: 10000000 })).body;
   await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
@@ -186,7 +186,7 @@ test('rentabilidad con semáforo y vista general (todos los meses)', async () =>
   assert.equal(profitability({ billing: 1000, adminGross: 250, net: 10 }, th).level, 'muy-malo'); // 4%
 
   const s = await seed();
-  await db.query("UPDATE users SET commission_rate = 25 WHERE id = 'u_admin'");
+  await db.query("UPDATE allies SET commission_rate = 25 WHERE id = 'ally_cun'"); // CUN le paga 25% a Futurocol
   const c = (await s.a1.post('/api/contacts', { name: 'R' })).body;
   const d = (await s.a1.post('/api/deals', { title: 'r', contactId: c.id, value: 8000000 })).body;
   await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });

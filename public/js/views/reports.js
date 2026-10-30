@@ -2,7 +2,7 @@ import {
   S, api, esc, money, compactMoney, pct, periodQuery, periodLabel, contactById, dealById, taskById, userName,
   stageLabel, fmtDate, companyById, TASK_TYPE_LABELS, lightDot,
 } from '../core.js';
-import { openModal, periodPicker, emptyState } from '../ui.js';
+import { openModal, periodPicker, allyPicker, emptyState } from '../ui.js';
 
 export const id = 'reportes';
 export const title = 'Reportes';
@@ -65,7 +65,7 @@ export async function render() {
   return `
     <div class="page-head">
       <div><h1>Reportes</h1><p class="muted">${esc(pl)} · haz clic en cualquier número para ver el detalle</p></div>
-      <div class="toolbar">${periodPicker()}</div>
+      <div class="toolbar">${allyPicker()}${periodPicker()}</div>
     </div>
 
     <section class="stats-grid">
@@ -88,11 +88,11 @@ export async function render() {
         </table></div>
       </div>
       <div class="card commission-admin-card">
-        <h3>Comisión de admin (gerencia) <small class="muted">· ${esc(pl)}</small></h3>
+        <h3>Ganancia Futurocol (gerencia) <small class="muted">· ${esc(pl)}</small></h3>
         ${r.commissions.admins.map((a) => `<div class="admin-comm">
           <strong>${esc(a.name)}</strong>
           <span class="big-value">${money(a.commission)}</span>
-          <small>${pct(a.rate)} × facturación total de la academia (${money(a.baseBilling)})</small>
+          <small>% que paga cada aliado × su facturación (total ${money(a.baseBilling)})</small>
           ${a.monthly.length > 1 ? `<table class="table compact"><tbody>${a.monthly.map((m) => `<tr><td>${esc(m.month)}</td><td class="num">${money(m.billing)}</td><td class="num">${money(m.commission)}</td></tr>`).join('')}</tbody></table>` : ''}
         </div>`).join('')}
       </div>

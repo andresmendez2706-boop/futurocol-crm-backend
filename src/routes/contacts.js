@@ -8,6 +8,7 @@ const { audit } = require('../audit');
 const realtime = require('../realtime');
 const repo = require('../services/repo');
 const { resolveAssignee, userName } = require('../services/ownership');
+const { resolveAlly, assertProgram, listAllies } = require('../services/allies');
 const { PROGRAMS, ACTIVITY_TYPES } = require('../constants');
 const { toCSV, parseCSV } = require('../csv');
 const {
@@ -19,9 +20,10 @@ const {
 
 const router = express.Router();
 
-const program = z.preprocess((v) => (v === '' ? null : v), z.enum(PROGRAMS).nullable().optional());
+// El programa se valida contra la lista del aliado (cada universidad tiene la suya).
+const program = optText(200);
 const base = {
-  phone: optText(50), email: optText(200), companyId: optText(100), program, city: optText(100),
+  phone: optText(50), email: optText(200), companyId: optText(100), program, city: optText(100), allyId: optText(100),
   notes: optText(10000), assignedTo: optText(100),
 };
 const createSchema = z.object({ name: reqText(200), ...base });
@@ -75,12 +77,14 @@ router.post('/', ah(async (req, res) => {
   const data = parse(createSchema, req.body);
   await assertCompany(data.companyId);
   const assignedTo = await resolveAssignee(req.user, data.assignedTo);
+  const ally = await resolveAlly(req.user, data.allyId);
+  assertProgram(ally, data.program);
   const duplicates = await findDuplicates(data, req.user);
   const { rows } = await db.query(
-    `INSERT INTO contacts (id, name, phone, email, company_id, program, city, notes, assigned_to)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+    `INSERT INTO contacts (id, name, phone, email, company_id, program, city, notes, assigned_to, ally_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING *`,
     [newId('c'), data.name, data.phone ?? null, data.email ?? null, data.companyId ?? null, data.program ?? null,
-      data.city ?? null, data.notes ?? null, assignedTo],
+      data.city ?? null, data.notes ?? null, assignedTo, ally.id],
   );
   await audit({
     by: req.user, action: 'creación', entityType: 'contacto', entityLabel: data.name,
@@ -100,6 +104,11 @@ router.patch('/:id', ah(async (req, res) => {
     name: data.name, phone: data.phone, email: data.email, company_id: data.companyId, program: data.program,
     city: data.city, notes: data.notes,
   };
+  if (data.allyId !== undefined || data.program) {
+    const ally = await resolveAlly(req.user, data.allyId || current.ally_id);
+    assertProgram(ally, data.program !== undefined ? data.program : current.program);
+    cols.ally_id = ally.id;
+  }
   if (data.assignedTo && data.assignedTo !== current.assigned_to) {
     cols.assigned_to = await resolveAssignee(req.user, data.assignedTo);
   }
@@ -174,6 +183,8 @@ router.post('/import', requireAdmin, ah(async (req, res) => {
   const records = parseCSV(csv);
   const result = await db.tx(async (client) => {
     const users = (await client.query('SELECT id, email, username, name FROM users')).rows;
+    const allies = await listAllies(client);
+    const defaultAlly = await resolveAlly(req.user, null, client);
     const companies = (await client.query('SELECT id, name FROM companies')).rows;
     let created = 0;
     let skipped = 0;
@@ -190,16 +201,19 @@ router.post('/import', requireAdmin, ah(async (req, res) => {
         await client.query('INSERT INTO companies (id, name, assigned_to) VALUES ($1, $2, $3)', [company.id, company.name, ownerUser?.id || req.user.id]);
         companies.push(company);
       }
+      const allyName = pick(r, 'aliado', 'universidad', 'ally');
+      const ally = (allyName && allies.find((a) => a.name.toLowerCase() === allyName.toLowerCase())) || defaultAlly;
+      const programs = ally.programs.length ? ally.programs : PROGRAMS;
       let prog = pick(r, 'programa', 'program');
-      if (prog && !PROGRAMS.includes(prog)) {
+      if (prog && !programs.includes(prog)) {
         const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-        prog = PROGRAMS.find((p) => norm(p) === norm(prog)) || null;
+        prog = programs.find((p) => norm(p) === norm(prog)) || null;
       }
       await client.query(
-        `INSERT INTO contacts (id, name, phone, email, company_id, program, city, notes, assigned_to)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        `INSERT INTO contacts (id, name, phone, email, company_id, program, city, notes, assigned_to, ally_id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
         [newId('c'), name, pick(r, 'telefono', 'phone'), pick(r, 'email', 'correo'), company?.id || null, prog,
-          pick(r, 'ciudad', 'city'), pick(r, 'notas', 'notes'), ownerUser?.id || req.user.id],
+          pick(r, 'ciudad', 'city'), pick(r, 'notas', 'notes'), ownerUser?.id || req.user.id, ally.id],
       );
       created++;
     }

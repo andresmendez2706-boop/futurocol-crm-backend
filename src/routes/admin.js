@@ -63,16 +63,17 @@ router.post('/backup/import', ah(async (req, res) => {
 }));
 
 router.get('/reports', ah(async (req, res) => {
-  res.json(await metrics.reports(parsePeriod(req.query)));
+  res.json(await metrics.reports(parsePeriod(req.query), req.query.ally || null));
 }));
 
 router.get('/finance', ah(async (req, res) => {
   const q = parse(z.object({
     year: z.coerce.number().int().min(2000).max(2100).optional(),
     all: z.enum(['1', 'true']).optional(),
+    ally: z.string().max(100).optional(),
   }), req.query);
   if (!q.all && !q.year) throw new HttpError(400, 'Indica year o all=1');
-  res.json(await metrics.finance(req.user, { year: q.year, all: !!q.all }));
+  res.json(await metrics.finance(req.user, { year: q.year, all: !!q.all, allyId: q.ally || null }));
 }));
 
 // ---- Gastos de operación (solo admin, ingreso manual)
@@ -82,15 +83,16 @@ const expenseSchema = z.object({
   category: z.string().trim().min(1, 'elige una categoría').max(60),
   description: z.string().trim().max(300).optional().nullable(),
   amount: z.coerce.number().min(0, 'el valor no puede ser negativo').max(1e13),
+  allyId: z.preprocess((v) => (v === '' ? null : v), z.string().max(100).nullable().optional()), // vacío = gasto general
 });
 const fmtMoney = (n) => Number(n).toLocaleString('es-CO');
 
 router.post('/expenses', ah(async (req, res) => {
   const d = parse(expenseSchema, req.body);
   const { rows } = await db.query(
-    `INSERT INTO expenses (id, year, month, category, description, amount, created_by)
-     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-    [newId('g'), d.year, d.month, d.category, d.description || null, d.amount, req.user.id],
+    `INSERT INTO expenses (id, year, month, category, description, amount, created_by, ally_id)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+    [newId('g'), d.year, d.month, d.category, d.description || null, d.amount, req.user.id, d.allyId || null],
   );
   await audit({ by: req.user, action: 'creación', entityType: 'gasto', entityLabel: `${d.category} ${d.month}/${d.year}`, detail: `${fmtMoney(d.amount)}${d.description ? ` · ${d.description}` : ''}` });
   realtime.notifyChange('finance', []);
@@ -99,7 +101,7 @@ router.post('/expenses', ah(async (req, res) => {
 
 router.patch('/expenses/:id', ah(async (req, res) => {
   const d = parse(expenseSchema.partial(), req.body);
-  const set = buildSet({ year: d.year, month: d.month, category: d.category, description: d.description, amount: d.amount });
+  const set = buildSet({ year: d.year, month: d.month, category: d.category, description: d.description, amount: d.amount, ally_id: d.allyId });
   if (!set.count) throw new HttpError(400, 'Nada que actualizar');
   const { rows } = await db.query(
     `UPDATE expenses SET ${set.sql}, updated_at = now() WHERE id = $${set.count + 1} RETURNING *`, [...set.values, req.params.id],
@@ -129,8 +131,8 @@ router.post('/expenses/copy', ah(async (req, res) => {
   const { rows } = await db.query('SELECT * FROM expenses WHERE year = $1 AND month = $2', [p.fromYear, p.fromMonth]);
   for (const e of rows) {
     await db.query(
-      `INSERT INTO expenses (id, year, month, category, description, amount, created_by) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [newId('g'), p.toYear, p.toMonth, e.category, e.description, e.amount, req.user.id],
+      `INSERT INTO expenses (id, year, month, category, description, amount, created_by, ally_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      [newId('g'), p.toYear, p.toMonth, e.category, e.description, e.amount, req.user.id, e.ally_id],
     );
   }
   if (rows.length) {

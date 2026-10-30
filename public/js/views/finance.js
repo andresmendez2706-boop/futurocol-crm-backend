@@ -1,8 +1,9 @@
 import {
   S, api, esc, icon, money, compactMoney, pct, options, MONTHS, MONTHS_SHORT, currencyCode,
+  allies, allyName, multiAlly, allyLabel,
 } from '../core.js';
 import {
-  emptyState, formModal, confirmDialog, alertDialog, toast,
+  emptyState, formModal, confirmDialog, alertDialog, toast, allyPicker,
 } from '../ui.js';
 import { drillDeals } from './reports.js';
 
@@ -76,7 +77,8 @@ function aggregate(rows, th) {
 
 export async function render() {
   const u = ui();
-  const f = await api('GET', u.mode === 'general' ? '/api/admin/finance?all=1' : `/api/admin/finance?year=${u.year}`);
+  const allyQ = S.ally ? `&ally=${encodeURIComponent(S.ally)}` : '';
+  const f = await api('GET', u.mode === 'general' ? `/api/admin/finance?all=1${allyQ}` : `/api/admin/finance?year=${u.year}${allyQ}`);
   const rows = scopeRows(f);
   const sum = u.mode === 'mes' ? { ...rows[0], dealIds: rows[0].dealIds } : aggregate(rows, f.thresholds);
   if (u.mode === 'mes') sum.asesores = rows[0].asesores.filter((a) => a.billing || a.commission);
@@ -92,8 +94,9 @@ export async function render() {
 
   return `
     <div class="page-head">
-      <div><h1>Balance financiero</h1><p class="muted">${esc(scopeName)} · lo que realmente queda después de comisiones y gastos</p></div>
+      <div><h1>Balance financiero</h1><p class="muted">${esc(scopeName)}${multiAlly() ? ` · ${esc(allyLabel())}` : ''} · lo que realmente queda después de comisiones y gastos</p></div>
       <div class="toolbar">
+        ${allyPicker()}
         <div class="seg">
           ${[['mes', 'Mes'], ['anio', 'Año'], ['general', 'General']].map(([k, l]) => `<button class="seg-btn ${u.mode === k ? 'active' : ''}" data-action="finance-mode" data-mode="${k}">${l}</button>`).join('')}
         </div>
@@ -110,9 +113,9 @@ export async function render() {
       </div>
       <div class="fin-op">×</div>
       <div class="fin-card admin">
-        <span class="stat-label">2 · Tu ganancia (${pct(f.adminRate)})</span>
+        <span class="stat-label">2 · Ganancia Futurocol</span>
         <strong class="stat-value">${money(sum.adminGross)}</strong>
-        <small>${pct(f.adminRate)} de la facturación</small>
+        <small>${esc(ratesText(f))} de la facturación</small>
       </div>
       <div class="fin-op">−</div>
       <div class="fin-card asesor">
@@ -149,7 +152,7 @@ export async function render() {
         <p class="muted">${sum.margin === null
     ? (sum.level === 'sin-datos' ? 'No hubo movimiento en este período.' : 'Hubo costos pero no hubo facturación.')
     : sum.margin >= 0
-      ? `De cada ${money(100)} de tu ganancia (${pct(f.adminRate)}), te quedan <b>${money(Math.round(sum.margin))}</b> después de comisiones y gastos.`
+      ? `De cada ${money(100)} de ganancia de Futurocol, te quedan <b>${money(Math.round(sum.margin))}</b> después de comisiones y gastos.`
       : `Las comisiones y gastos superaron tu ganancia: por cada ${money(100)} que ganaste, perdiste <b>${money(Math.abs(Math.round(sum.margin)))}</b>.`}</p>
         <ul class="profit-scale">
           <li><span class="dot dot-verde"></span> Excelente: ${th.excelente}% o más</li>
@@ -163,7 +166,7 @@ export async function render() {
     <section class="card no-pad">
       <div class="card-head"><h3>Mes a mes · ${esc(scopeName)}</h3><small class="muted">Clic en un mes para ver su detalle</small></div>
       <div class="table-wrap table-scroll" data-scroll-key="finance-table"><table class="table compact finance-table">
-        <thead><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Tu ganancia</th><th class="num">Comisiones</th><th class="num">Gastos</th><th class="num">Te queda</th><th>Rentabilidad</th></tr></thead>
+        <thead><tr><th>Mes</th><th class="num">Facturación</th><th class="num">Ganancia Futurocol</th><th class="num">Comisiones</th><th class="num">Gastos</th><th class="num">Te queda</th><th>Rentabilidad</th></tr></thead>
         <tbody>${rows.length ? rows.map((r) => `<tr class="clickable" data-action="finance-open-month" data-year="${r.year}" data-month="${r.month}">
           <td>${monthLabel(r)}</td><td class="num">${money(r.billing)}</td><td class="num">${money(r.adminGross)}</td>
           <td class="num">${money(r.asesoresCommission)}</td><td class="num">${money(r.expensesTotal)}</td>
@@ -172,6 +175,8 @@ export async function render() {
           <td class="num">${money(sum.expensesTotal)}</td><td class="num${neg(sum.net)}">${money(sum.net)}</td><td>${light(sum)}</td></tr></tfoot>
       </table></div>
     </section>` : ''}
+
+    ${allyTable(f, u)}
 
     <section class="finance-grid even">
       ${expensesCard(f, u, sum)}
@@ -186,7 +191,34 @@ export async function render() {
         </table></div>` : emptyState('Ningún asesor facturó en este período.')}
       </div>
     </section>
-    <p class="muted small-note">Tu porcentaje (${pct(f.adminRate)}) y el de cada asesor se cambian en <a href="#/usuarios">Usuarios</a>. La facturación cuenta los negocios en "Cierre ganado" según su fecha de cierre.</p>`;
+    <p class="muted small-note">El % que paga cada aliado se cambia en <a href="#/configuracion">Configuración → Aliados</a> y el de cada asesor en <a href="#/usuarios">Usuarios</a>. La facturación cuenta los negocios en "Cierre ganado" según su fecha de cierre.</p>`;
+}
+
+// "CUN 25% · UNIR 20%"
+const ratesText = (f) => (f.allies || []).filter((a) => !S.ally || a.id === S.ally).map((a) => `${a.name} ${pct(a.rate)}`).join(' · ') || pct(f.adminRate);
+
+// Ganancias por aliado en el período elegido (solo en la vista "Todos los aliados" con 2 o más aliados).
+function allyTable(f, u) {
+  if (S.ally || (f.allies || []).length < 2) return '';
+  const rows = S.ui.financeData.rows;
+  const per = f.allies.map((a) => {
+    const xs = rows.map((r) => (r.byAlly || []).find((x) => x.allyId === a.id)).filter(Boolean);
+    const t = (k) => xs.reduce((acc, x) => acc + x[k], 0);
+    return { name: a.name, rate: a.rate, billing: t('billing'), gross: t('gross'), commission: t('commission'), expenses: t('expenses'), net: t('net') };
+  });
+  const tot = (k) => per.reduce((acc, x) => acc + x[k], 0);
+  const general = rows.reduce((acc, r) => acc + r.expenses.filter((e) => !e.allyId).reduce((a2, e) => a2 + Number(e.amount), 0), 0);
+  const neg = (n) => (n < 0 ? ' negative' : '');
+  return `<section class="card no-pad">
+    <div class="card-head"><h3>Ganancias por aliado</h3><small class="muted">Cada aliado por separado y Futurocol en total</small></div>
+    <div class="table-wrap"><table class="table compact">
+      <thead><tr><th>Aliado</th><th class="num">Facturación</th><th class="num">% que paga</th><th class="num">Ganancia Futurocol</th><th class="num">Comisión asesores</th><th class="num">Gastos del aliado</th><th class="num">Te queda</th></tr></thead>
+      <tbody>${per.map((a) => `<tr><td><span class="chip chip-sm chip-ally">${esc(a.name)}</span></td><td class="num">${money(a.billing)}</td><td class="num">${pct(a.rate)}</td>
+        <td class="num">${money(a.gross)}</td><td class="num">${money(a.commission)}</td><td class="num">${money(a.expenses)}</td><td class="num${neg(a.net)}"><b>${money(a.net)}</b></td></tr>`).join('')}
+        ${general ? `<tr><td class="muted">Gastos generales de Futurocol</td><td></td><td></td><td></td><td></td><td class="num">${money(general)}</td><td class="num negative">-${money(general)}</td></tr>` : ''}</tbody>
+      <tfoot><tr><td>Futurocol (todo)</td><td class="num">${money(tot('billing'))}</td><td></td><td class="num">${money(tot('gross'))}</td><td class="num">${money(tot('commission'))}</td>
+        <td class="num">${money(tot('expenses') + general)}</td><td class="num${neg(tot('net') - general)}">${money(tot('net') - general)}</td></tr></tfoot>
+    </table></div></section>`;
 }
 
 function scopeRowsFor(f, mode) {
@@ -220,12 +252,13 @@ function expensesCard(f, u, sum) {
       <input class="input" id="exp-category" name="category" list="exp-categories" placeholder="Categoría: Marketing…" required aria-label="Categoría">
       <input class="input" id="exp-amount" name="amount" inputmode="numeric" placeholder="Valor (${currencyCode()}): 1.500.000" required aria-label="Valor">
       <input class="input" id="exp-description" name="description" placeholder="Descripción (opcional)" maxlength="300" aria-label="Descripción">
+      ${multiAlly() ? `<select class="input" name="allyId" aria-label="Aliado del gasto">${options(allies().map((a) => ({ value: a.id, label: `Solo ${a.name}` })), S.ally || '', { empty: 'General de Futurocol' })}</select>` : ''}
       <button class="btn btn-primary" type="submit" title="Agregar gasto">${icon('plus')} Agregar gasto</button>
       <datalist id="exp-categories">${f.expenseCategories.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
     </form>
     ${m.expenses.length ? `<div class="table-wrap"><table class="table compact">
       <tbody>${m.expenses.map((e) => `<tr>
-        <td><span class="chip chip-sm">${esc(e.category)}</span></td><td>${esc(e.description || '—')}</td>
+        <td><span class="chip chip-sm">${esc(e.category)}</span>${multiAlly() ? ` <span class="chip chip-sm chip-ally">${e.allyId ? esc(allyName(e.allyId)) : 'General'}</span>` : ''}</td><td>${esc(e.description || '—')}</td>
         <td class="num"><b>${money(e.amount)}</b></td>
         <td class="actions"><button class="icon-btn" data-action="expense-edit" data-id="${esc(e.id)}" title="Editar">${icon('edit')}</button>
           <button class="icon-btn danger" data-action="expense-delete" data-id="${esc(e.id)}" title="Eliminar">${icon('trash')}</button></td>
@@ -239,7 +272,7 @@ function expensesCard(f, u, sum) {
 // Colores validados (contraste, daltonismo y separación): facturación, tu ganancia, te queda.
 const SERIES = [
   { key: 'billing', label: 'Facturación', color: '#5b43c0' },
-  { key: 'adminGross', label: 'Tu ganancia', color: '#1a8fd0' },
+  { key: 'adminGross', label: 'Ganancia Futurocol', color: '#1a8fd0' },
   { key: 'net', label: 'Te queda', color: '#eb6834' },
 ];
 
@@ -332,7 +365,7 @@ export function mount(root) {
     const btn = form.querySelector('button[type=submit]');
     btn.disabled = true;
     try {
-      await api('POST', '/api/admin/expenses', { year: u.year, month: u.month, category, description: fd.get('description'), amount });
+      await api('POST', '/api/admin/expenses', { year: u.year, month: u.month, category, description: fd.get('description'), amount, allyId: fd.get('allyId') || null });
       toast('Gasto registrado');
       await window.crm.render();
       document.getElementById('exp-category')?.focus();
@@ -376,11 +409,12 @@ export const actions = {
         { name: 'category', label: 'Categoría', value: e.category, required: true, full: true, list: 'exp-categories' },
         { name: 'description', label: 'Descripción', value: e.description, full: true },
         { name: 'amount', label: `Valor (${currencyCode()})`, value: Number(e.amount).toLocaleString('es-CO'), required: true, full: true },
+        multiAlly() ? { name: 'allyId', label: 'Aliado', type: 'select', value: e.allyId || '', empty: 'General de Futurocol', full: true, options: allies().map((a) => ({ value: a.id, label: `Solo ${a.name}` })) } : null,
       ],
       onSubmit: async (v) => {
         const amount = parseAmount(v.amount);
         if (!amount) throw new Error('Escribe el valor del gasto.');
-        await api('PATCH', `/api/admin/expenses/${e.id}`, { category: v.category, description: v.description, amount });
+        await api('PATCH', `/api/admin/expenses/${e.id}`, { category: v.category, description: v.description, amount, ...(v.allyId !== undefined ? { allyId: v.allyId || null } : {}) });
         toast('Gasto actualizado');
         await window.crm.render();
       },

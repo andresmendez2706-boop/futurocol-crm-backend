@@ -15,6 +15,7 @@ const crypto = require('crypto');
 const db = require('../db');
 const settings = require('./settings');
 const { hashPassword } = require('../auth');
+const { listAllies } = require('./allies');
 const { audit } = require('../audit');
 const { PROGRAMS, LOST } = require('../constants');
 const {
@@ -45,6 +46,7 @@ async function exportBackup() {
     expenses: expenses.map(withExtra(mapExpense)),
     stages: await settings.getStages(),
     commissions: await settings.getCommissions(),
+    allies: await listAllies(),
     currency: await settings.getCurrency(),
   };
 }
@@ -60,6 +62,7 @@ const COLLECTIONS = {
   auditLog: ['auditlog', 'audit', 'auditoria', 'logs', 'log'],
   expenses: ['expenses', 'gastos'],
   stages: ['stages', 'etapas', 'pipelinestages', 'pipeline'],
+  allies: ['allies', 'aliados', 'universidades'],
   commissions: ['commissions', 'comisiones', 'commissionsettings', 'commissionconfig', 'commission'],
   settings: ['settings', 'config', 'configuracion', 'ajustes'],
 };
@@ -86,7 +89,7 @@ function extractCollections(raw) {
     }
   };
   visit(coerceJSON(raw), 0);
-  for (const k of ['users', 'companies', 'contacts', 'deals', 'tasks', 'messages', 'auditLog', 'expenses']) {
+  for (const k of ['users', 'companies', 'contacts', 'deals', 'tasks', 'messages', 'auditLog', 'expenses', 'allies']) {
     const v = out[k];
     if (v && !Array.isArray(v) && typeof v === 'object') out[k] = Object.entries(v).map(([id, r]) => ({ id, ...r }));
     if (!Array.isArray(out[k])) out[k] = [];
@@ -280,6 +283,21 @@ async function importBackup(raw, { mode = 'merge', actor }) {
       await settings.set('commissions', { ...(await settings.getCommissions(client)), ...commissions }, client);
     }
 
+    // ---------------- aliados (universidades). Los backups anteriores a los aliados quedan como CUN.
+    for (const rec of data.allies) {
+      const id = str(rec.id);
+      const name = str(rec.name);
+      if (!id || !name) continue;
+      await client.query(
+        `INSERT INTO allies (id, name, commission_rate, programs, active) VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (id) DO ${mode === 'replace' ? 'UPDATE SET name = EXCLUDED.name, commission_rate = EXCLUDED.commission_rate, programs = EXCLUDED.programs, active = EXCLUDED.active' : 'NOTHING'}`,
+        [id, name, toNum(rec.commissionRate) ?? 0, JSON.stringify(Array.isArray(rec.programs) ? rec.programs : []), rec.active !== false],
+      ).catch((err) => warnings.push(`Aliado "${name}" no importado: ${err.message}`));
+    }
+    const allyIds = new Set((await client.query('SELECT id FROM allies')).rows.map((x) => x.id));
+    const defaultAllyId = allyIds.has('ally_cun') ? 'ally_cun' : [...allyIds][0] || null;
+    const allyOf = (v) => (str(v) && allyIds.has(str(v)) ? str(v) : defaultAllyId);
+
     // ---------------- empresas
     for (const rec of data.companies) {
       const r = reader(rec);
@@ -315,14 +333,15 @@ async function importBackup(raw, { mode = 'merge', actor }) {
       const extra = r.extra();
       if (companyId && !companyIds.has(companyId)) { extra.originalCompanyId = companyId; companyId = null; }
       const activity = coerceJSON(r.get('activity', 'activities', 'bitacora', 'log'));
+      const contactAlly = allyOf(r.get('allyId', 'ally_id', 'aliado'));
       const res = await client.query(
-        `INSERT INTO contacts (id, name, phone, email, company_id, program, city, notes, assigned_to, created_at, activity, extra)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT (id) DO NOTHING`,
+        `INSERT INTO contacts (id, name, phone, email, company_id, program, city, notes, assigned_to, created_at, activity, extra, ally_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO NOTHING`,
         [id, str(r.get('name', 'nombre')) || 'Sin nombre', str(r.get('phone', 'telefono', 'celular')),
           str(r.get('email', 'correo')), companyId, normProgram(r.get('program', 'programa')), str(r.get('city', 'ciudad')),
           str(r.get('notes', 'notas')), owner(r.get('assignedTo', 'assigned_to', 'owner', 'ownerId', 'asesor')),
           toTs(r.get('createdAt', 'created_at')) || new Date().toISOString(),
-          JSON.stringify(Array.isArray(activity) ? activity : []), JSON.stringify(extra)],
+          JSON.stringify(Array.isArray(activity) ? activity : []), JSON.stringify(extra), contactAlly],
       );
       count('contacts', res.rowCount ? 'inserted' : 'skipped');
     }
@@ -345,6 +364,7 @@ async function importBackup(raw, { mode = 'merge', actor }) {
       }
       let contactId = str(r.get('contactId', 'contact_id', 'contacto', 'contact'));
       if (contactId && !contactIds.has(contactId)) { extra.originalContactId = contactId; contactId = null; }
+      const dealAlly = allyOf(r.get('allyId', 'ally_id', 'aliado'));
       let lossReason = str(r.get('lossReason', 'loss_reason', 'motivoPerdida'));
       if (stage === LOST && !lossReason) {
         lossReason = 'Sin motivo registrado (importado)';
@@ -354,8 +374,8 @@ async function importBackup(raw, { mode = 'merge', actor }) {
       const history = coerceJSON(r.get('stageHistory', 'stage_history', 'history', 'historial'));
       const res = await client.query(
         `INSERT INTO deals (id, title, contact_id, value, stage, deal_type, product, convocatoria, probability,
-           expected_close_date, close_date, competitor, next_step, loss_reason, assigned_to, created_at, stage_history, extra)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) ON CONFLICT (id) DO NOTHING`,
+           expected_close_date, close_date, competitor, next_step, loss_reason, assigned_to, created_at, stage_history, extra, ally_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) ON CONFLICT (id) DO NOTHING`,
         [id, str(r.get('title', 'titulo', 'name', 'nombre')) || 'Sin título', contactId,
           toNum(r.get('value', 'valor', 'amount')) ?? 0, stage, str(r.get('dealType', 'deal_type', 'tipo', 'type')),
           str(r.get('product', 'producto', 'programa')), str(r.get('convocatoria')),
@@ -365,7 +385,7 @@ async function importBackup(raw, { mode = 'merge', actor }) {
           str(r.get('nextStep', 'next_step', 'siguientePaso')), lossReason,
           owner(r.get('assignedTo', 'assigned_to', 'owner', 'ownerId', 'asesor')),
           toTs(r.get('createdAt', 'created_at')) || new Date().toISOString(),
-          JSON.stringify(Array.isArray(history) ? history : []), JSON.stringify(extra)],
+          JSON.stringify(Array.isArray(history) ? history : []), JSON.stringify(extra), dealAlly],
       );
       count('deals', res.rowCount ? 'inserted' : 'skipped');
     }
@@ -445,11 +465,12 @@ async function importBackup(raw, { mode = 'merge', actor }) {
       if (!year || !month || month < 1 || month > 12) { count('expenses', 'skipped'); continue; }
       const byId = str(r.get('createdBy', 'created_by'));
       const res = await client.query(
-        `INSERT INTO expenses (id, year, month, category, description, amount, created_by, created_at, extra)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) ON CONFLICT (id) DO NOTHING`,
+        `INSERT INTO expenses (id, year, month, category, description, amount, created_by, created_at, extra, ally_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT (id) DO NOTHING`,
         [id, year, month, str(r.get('category', 'categoria')) || 'Otros', str(r.get('description', 'descripcion')),
           Math.max(0, toNum(r.get('amount', 'valor', 'monto')) ?? 0), byId ? userMap.get(byId) || byId : null,
-          toTs(r.get('createdAt', 'created_at')) || new Date().toISOString(), JSON.stringify(r.extra())],
+          toTs(r.get('createdAt', 'created_at')) || new Date().toISOString(), JSON.stringify(r.extra()),
+          str(r.get('allyId', 'ally_id')) && allyIds.has(str(rec.allyId ?? rec.ally_id)) ? str(rec.allyId ?? rec.ally_id) : null],
       );
       count('expenses', res.rowCount ? 'inserted' : 'skipped');
     }

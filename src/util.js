@@ -36,7 +36,10 @@ const iso = (d) => (d instanceof Date ? d.toISOString() : d ?? null);
 
 const mapUser = (r, { full = false } = {}) => {
   const u = { id: r.id, name: r.name, username: r.username, email: r.email, role: r.role, createdAt: iso(r.created_at) };
-  if (full) u.commissionRate = r.commission_rate;
+  if (full) {
+    u.commissionRate = r.commission_rate;
+    u.allyIds = r.ally_ids || [];
+  }
   return u;
 };
 
@@ -49,6 +52,7 @@ const mapCompany = (r) => ({
 const mapContact = (r) => ({
   id: r.id, name: r.name, phone: r.phone, email: r.email, companyId: r.company_id, program: r.program,
   city: r.city, notes: r.notes, assignedTo: r.assigned_to, createdAt: iso(r.created_at), activity: r.activity || [],
+  allyId: r.ally_id,
 });
 
 const mapDeal = (r) => ({
@@ -56,7 +60,7 @@ const mapDeal = (r) => ({
   product: r.product, convocatoria: r.convocatoria, probability: r.probability,
   expectedCloseDate: r.expected_close_date, closeDate: r.close_date, competitor: r.competitor,
   nextStep: r.next_step, lossReason: r.loss_reason, assignedTo: r.assigned_to, createdAt: iso(r.created_at),
-  stageHistory: r.stage_history || [],
+  stageHistory: r.stage_history || [], allyId: r.ally_id,
 });
 
 const mapTask = (r) => ({
@@ -74,7 +78,7 @@ const mapAudit = (r) => ({
 
 const mapExpense = (r) => ({
   id: r.id, year: r.year, month: r.month, category: r.category, description: r.description, amount: r.amount,
-  createdBy: r.created_by, createdAt: iso(r.created_at),
+  createdBy: r.created_by, createdAt: iso(r.created_at), allyId: r.ally_id,
 });
 
 // Construye "SET a=$1, b=$2" a partir de un objeto { columna: valor } (solo claves definidas).

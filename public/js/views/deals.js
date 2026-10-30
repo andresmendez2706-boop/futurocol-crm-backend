@@ -2,10 +2,12 @@ import {
   S, api, esc, icon, isAdmin, canManage, userName, contactById, dealById, money, compactMoney, pct, fmtDate,
   fmtDateTime, stageLabel, options, dealProbability, isClosedStage, inPeriod, billingDate, periodLabel,
   savePrefs, cachedDashboard, canEditTask, currencyCode, lightDot, TASK_TYPE_LABELS, WON, LOST,
+  inAllyFilter, allyName, multiAlly, programsFor, myAllies,
 } from '../core.js';
 import { taskForm } from './tasks.js';
 import {
   formModal, openModal, confirmDialog, promptDialog, toast, emptyState, periodPicker, assigneeField,
+  allyPicker, allyField, bindAllyPrograms,
 } from '../ui.js';
 
 export const id = 'negocios';
@@ -36,6 +38,7 @@ function dealCard(d) {
       <span class="deal-value">${compactMoney(d.value)}</span>
       ${!isClosedStage(d.stage) ? `<span class="muted">${dealProbability(d)}%</span>` : ''}
     </div>
+    ${multiAlly() ? `<span class="chip chip-sm chip-ally">${esc(allyName(d.allyId))}</span>` : ''}
     ${d.product || d.dealType ? `<span class="chip chip-sm">${esc([d.dealType, d.product].filter(Boolean).join(' · '))}</span>` : ''}
     ${isAdmin() ? `<small class="owner">${esc(userName(d.assignedTo))}</small>` : ''}
     ${d.stage === LOST && d.lossReason ? `<small class="loss">Motivo: ${esc(d.lossReason)}</small>` : ''}
@@ -69,13 +72,14 @@ function listView(list) {
 export async function render() {
   const u = ui();
   const stats = await cachedDashboard();
-  const list = S.deals.filter((d) => matches(d) && visibleInPeriod(d));
+  const list = S.deals.filter((d) => matches(d) && visibleInPeriod(d) && inAllyFilter(d));
   const c = stats.cards;
   return `
     <div class="page-head">
       <div><h1>Negocios</h1><p class="muted">Pipeline · cerrados de ${esc(periodLabel().toLowerCase())}</p></div>
       <div class="toolbar">
         <input id="deals-q" class="input" placeholder="Buscar negocio, contacto, programa…" value="${esc(u.q)}" data-input="deals-q">
+        ${allyPicker()}
         ${periodPicker()}
         <div class="seg">
           <button class="seg-btn ${u.layout === 'kanban' ? 'active' : ''}" data-action="deals-layout" data-layout="kanban" title="Kanban">${icon('columns')}</button>
@@ -181,16 +185,18 @@ export async function moveDeal(deal, stage) {
 export function dealForm(deal = null, { contactId, stage } = {}) {
   const d = deal || {};
   const contacts = S.contacts.filter((c) => canManage(c) || c.id === d.contactId);
-  formModal({
+  const startAlly = d.allyId || contactById(d.contactId || contactId)?.allyId || myAllies()[0]?.id;
+  const m = formModal({
     title: deal ? 'Editar negocio' : 'Nuevo negocio',
     size: 'lg',
     fields: [
       { name: 'title', label: 'Título', value: d.title, required: true },
-      { name: 'contactId', label: 'Contacto', type: 'select', value: d.contactId || contactId, empty: 'Selecciona un contacto', required: true, options: contacts.map((c) => ({ value: c.id, label: c.name })) },
+      { name: 'contactId', label: 'Contacto', type: 'select', value: d.contactId || contactId, empty: 'Selecciona un contacto', required: true, options: contacts.map((c) => ({ value: c.id, label: `${c.name}${multiAlly() ? ` · ${allyName(c.allyId)}` : ''}` })) },
+      allyField(startAlly),
       { name: 'value', label: `Valor (${currencyCode()})`, type: 'number', min: 0, step: 1000, value: d.value ?? '' },
       deal ? null : { name: 'stage', label: 'Etapa', type: 'select', value: stage || S.settings.stages[0]?.id, options: S.settings.stages.map((s) => ({ value: s.id, label: s.label })) },
       { name: 'dealType', label: 'Tipo', type: 'select', value: d.dealType, empty: '—', options: S.constants.dealTypes },
-      { name: 'product', label: 'Producto / programa', type: 'select', value: d.product, empty: '—', options: S.constants.programs },
+      { name: 'product', label: 'Producto / programa', type: 'select', value: d.product, empty: 'Sin programa', options: programsFor(startAlly) },
       { name: 'convocatoria', label: 'Convocatoria', value: d.convocatoria },
       { name: 'probability', label: 'Probabilidad (%)', type: 'number', min: 0, max: 100, value: d.probability ?? '', placeholder: 'Por defecto según etapa' },
       { name: 'expectedCloseDate', label: 'Cierre esperado', type: 'date', value: d.expectedCloseDate },
@@ -207,6 +213,16 @@ export function dealForm(deal = null, { contactId, stage } = {}) {
       await window.crm.refresh();
       return saved && true;
     },
+  });
+  bindAllyPrograms(m, 'product');
+  // Al elegir el contacto, el negocio toma el aliado de ese contacto.
+  m.query('[name="contactId"]')?.addEventListener('change', (e) => {
+    const c = contactById(e.target.value);
+    const sel = m.query('[name="allyId"]');
+    if (c?.allyId && sel && [...sel.options].some((o) => o.value === c.allyId)) {
+      sel.value = c.allyId;
+      sel.dispatchEvent(new Event('change'));
+    }
   });
 }
 
@@ -239,6 +255,7 @@ function detailHtml(d) {
     </div>
     <div class="detail-grid">
       <div><small>Contacto</small><span>${c ? `<a href="#" data-action="open-contact" data-id="${esc(c.id)}">${esc(c.name)}</a>` : '—'}</span></div>
+      <div><small>Aliado</small><span>${esc(allyName(d.allyId))}</span></div>
       <div><small>Tipo</small><span>${esc(d.dealType || '—')}</span></div>
       <div><small>Programa</small><span>${esc(d.product || '—')}</span></div>
       <div><small>Convocatoria</small><span>${esc(d.convocatoria || '—')}</span></div>

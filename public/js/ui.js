@@ -1,7 +1,7 @@
 // Componentes de interfaz: modales propios (nunca window.confirm/alert/prompt), avisos y formularios.
 
 import {
-  esc, icon, options, S, MONTHS, ApiError, isAdmin,
+  esc, icon, options, S, MONTHS, ApiError, isAdmin, myAllies, allyById, programsFor,
 } from './core.js';
 
 const stack = [];
@@ -220,6 +220,39 @@ export function formModal({ title, fields, submitText = 'Guardar', onSubmit, siz
 }
 
 // ---- selector de período (sincronizado entre Panel, Negocios, Reportes y Embudo)
+// Campo "Aliado" para formularios: solo los aliados que el usuario puede vender.
+export function allyField(value) {
+  const list = myAllies();
+  const current = allyById(value);
+  const opts = current && !list.some((a) => a.id === current.id) ? [...list, current] : list;
+  return {
+    name: 'allyId', label: 'Aliado (universidad)', type: 'select', required: true,
+    value: value || (opts[0] && opts[0].id), options: opts.map((a) => ({ value: a.id, label: a.name })),
+  };
+}
+
+// Al cambiar el aliado en un formulario, la lista de programas pasa a ser la de ese aliado.
+export function bindAllyPrograms(m, programField) {
+  const ally = m.query('[name="allyId"]');
+  const prog = m.query(`[name="${programField}"]`);
+  if (!ally || !prog) return;
+  const fill = () => {
+    const keep = prog.value;
+    const list = programsFor(ally.value);
+    prog.innerHTML = options(list, list.includes(keep) ? keep : '', { empty: 'Sin programa' });
+  };
+  ally.addEventListener('change', fill);
+  fill();
+}
+
+// Selector de aliado (solo aparece cuando hay más de un aliado).
+export function allyPicker() {
+  const list = S.settings.allies || [];
+  if (list.length < 2) return '';
+  return `<select class="input input-sm ally-picker" data-change="ally-filter" title="Aliado">
+    ${options(list.map((a) => ({ value: a.id, label: a.name })), S.ally, { empty: 'Todos los aliados' })}</select>`;
+}
+
 export function periodPicker() {
   const p = S.period;
   const [curY] = S.today.split('-').map(Number);

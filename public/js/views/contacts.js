@@ -1,9 +1,10 @@
 import {
   S, api, esc, icon, isAdmin, canManage, canEditTask, userName, companyById, contactById, money, fmtDate, fmtDateTime,
   stageLabel, options, MONTHS, ACTIVITY_LABELS, TASK_TYPE_LABELS, lightDot, initials, savePrefs,
+  inAllyFilter, allyName, multiAlly, programsFor, myAllies,
 } from '../core.js';
 import {
-  formModal, openModal, confirmDialog, alertDialog, toast, emptyState, assigneeField,
+  formModal, openModal, confirmDialog, alertDialog, toast, emptyState, assigneeField, allyPicker, allyField, bindAllyPrograms,
 } from '../ui.js';
 import { taskForm } from './tasks.js';
 import { dealForm } from './deals.js';
@@ -20,6 +21,7 @@ function filtered() {
   const t = q.trim().toLowerCase();
   const qd = t.replace(/\D/g, '');
   return S.contacts.filter((c) => {
+    if (!inAllyFilter(c)) return false;
     if (year || month) {
       const d = new Date(c.createdAt);
       if (year && d.getFullYear() !== Number(year)) return false;
@@ -48,15 +50,16 @@ export function render() {
           <div class="contact-card-head"><div class="avatar sm">${esc(initials(c.name))}</div>
             <div><strong>${esc(c.name)}</strong><small class="block muted">${esc(companyById(c.companyId)?.name || c.city || '')}</small></div></div>
           <div class="contact-card-body">
+            ${multiAlly() ? `<span class="chip chip-ally">${esc(allyName(c.allyId))}</span>` : ''}
             ${c.program ? `<span class="chip">${esc(c.program)}</span>` : ''}
             <small class="block">${esc(c.phone || '')}</small><small class="block">${esc(c.email || '')}</small>
           </div>
           <small class="muted">${esc(userName(c.assignedTo))} · ${fmtDate(c.createdAt)}</small>
         </div>`).join('')}</div>`
     : `<div class="card no-pad"><div class="table-wrap"><table class="table">
-        <thead><tr><th>Nombre</th><th>Teléfono</th><th>Correo</th><th>Empresa</th><th>Programa</th><th>Ciudad</th><th>Responsable</th><th>Creado</th><th></th></tr></thead>
+        <thead><tr><th>Nombre</th>${multiAlly() ? '<th>Aliado</th>' : ''}<th>Teléfono</th><th>Correo</th><th>Empresa</th><th>Programa</th><th>Ciudad</th><th>Responsable</th><th>Creado</th><th></th></tr></thead>
         <tbody>${list.map((c) => `<tr class="clickable" data-action="open-contact" data-id="${esc(c.id)}">
-          <td><strong>${esc(c.name)}</strong></td><td>${esc(c.phone || '—')}</td><td>${esc(c.email || '—')}</td>
+          <td><strong>${esc(c.name)}</strong></td>${multiAlly() ? `<td><span class="chip chip-sm chip-ally">${esc(allyName(c.allyId))}</span></td>` : ''}<td>${esc(c.phone || '—')}</td><td>${esc(c.email || '—')}</td>
           <td>${esc(companyById(c.companyId)?.name || '—')}</td><td>${esc(c.program || '—')}</td><td>${esc(c.city || '—')}</td>
           <td>${esc(userName(c.assignedTo))}</td><td>${fmtDate(c.createdAt)}</td>
           <td class="actions">${canManage(c) ? `<button class="icon-btn" data-action="edit-contact" data-id="${esc(c.id)}" title="Editar">${icon('edit')}</button>` : ''}
@@ -67,6 +70,7 @@ export function render() {
       <div><h1>Contactos</h1><p class="muted">${list.length} de ${S.contacts.length} contacto(s)</p></div>
       <div class="toolbar">
         <input id="contacts-q" class="input" placeholder="Buscar nombre, teléfono, correo…" value="${esc(u.q)}" data-input="contacts-q">
+        ${allyPicker()}
         <select class="input input-sm" data-change="contacts-month" title="Mes de creación">${options(MONTHS.map((m, i) => ({ value: i + 1, label: m })), u.month, { empty: 'Todos los meses' })}</select>
         <select class="input input-sm" data-change="contacts-year" title="Año de creación">${options(years, u.year, { empty: 'Todos los años' })}</select>
         <div class="seg">
@@ -85,7 +89,8 @@ export function render() {
 export function contactForm(contact = null, { companyId, onSaved } = {}) {
   const c = contact || {};
   const companies = S.companies.filter((x) => canManage(x) || x.id === c.companyId);
-  formModal({
+  const startAlly = c.allyId || myAllies()[0]?.id;
+  const m = formModal({
     title: contact ? 'Editar contacto' : 'Nuevo contacto',
     size: 'lg',
     fields: [
@@ -93,7 +98,8 @@ export function contactForm(contact = null, { companyId, onSaved } = {}) {
       { name: 'phone', label: 'Teléfono', value: c.phone, type: 'tel' },
       { name: 'email', label: 'Correo', value: c.email, type: 'email' },
       { name: 'companyId', label: 'Empresa', type: 'select', value: c.companyId || companyId, empty: 'Sin empresa', options: companies.map((x) => ({ value: x.id, label: x.name })) },
-      { name: 'program', label: 'Programa de interés', type: 'select', value: c.program, empty: 'Sin programa', options: S.constants.programs },
+      allyField(startAlly),
+      { name: 'program', label: 'Programa de interés', type: 'select', value: c.program, empty: 'Sin programa', options: programsFor(startAlly) },
       { name: 'city', label: 'Ciudad', value: c.city },
       assigneeField(c.assignedTo),
       { name: 'notes', label: 'Notas', type: 'textarea', value: c.notes, full: true },
@@ -113,6 +119,7 @@ export function contactForm(contact = null, { companyId, onSaved } = {}) {
       onSaved?.(saved);
     },
   });
+  bindAllyPrograms(m, 'program');
 }
 
 // ---------------------------------------------------------------- detalle
@@ -136,6 +143,7 @@ function detailHtml(c) {
     </div>
     <div class="detail-grid">
       <div><small>Empresa</small><span>${company ? `<a href="#" data-action="open-company" data-id="${esc(company.id)}">${esc(company.name)}</a>` : '—'}</span></div>
+      <div><small>Aliado</small><span>${esc(allyName(c.allyId))}</span></div>
       <div><small>Programa</small><span>${esc(c.program || '—')}</span></div>
       <div><small>Ciudad</small><span>${esc(c.city || '—')}</span></div>
       <div><small>Responsable</small><span>${esc(userName(c.assignedTo))}</span></div>

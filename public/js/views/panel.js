@@ -1,8 +1,8 @@
 import {
   S, esc, money, compactMoney, pct, isAdmin, cachedDashboard, periodLabel, fmtDateTime, stageLabel,
-  MONTHS_SHORT, ACTIVITY_LABELS,
+  MONTHS_SHORT, ACTIVITY_LABELS, allyLabel, multiAlly,
 } from '../core.js';
-import { periodPicker, emptyState } from '../ui.js';
+import { periodPicker, allyPicker, emptyState } from '../ui.js';
 
 export const id = 'panel';
 export const title = 'Panel';
@@ -75,8 +75,8 @@ export async function render() {
   const pl = periodLabel();
   return `
     <div class="page-head">
-      <div><h1>Panel</h1><p class="muted">Hola, ${esc(S.me.name.split(' ')[0])}. Resumen de ${esc(pl.toLowerCase())}.</p></div>
-      <div class="toolbar">${periodPicker()}</div>
+      <div><h1>Panel</h1><p class="muted">Hola, ${esc(S.me.name.split(' ')[0])}. Resumen de ${esc(pl.toLowerCase())}${multiAlly() ? ` · ${esc(allyLabel())}` : ''}.</p></div>
+      <div class="toolbar">${allyPicker()}${periodPicker()}</div>
     </div>
 
     <section class="stats-grid">
@@ -96,9 +96,11 @@ export async function render() {
           <small>Suma de la tasa individual de cada asesor × lo que él mismo cerró · ${esc(pl)}</small>
         </div>
         <div class="commission-card admin">
-          <span class="stat-label">Comisión de admin (gerencia)</span>
+          <span class="stat-label">Ganancia Futurocol${multiAlly() ? ` · ${esc(allyLabel())}` : ' (gerencia)'}</span>
           <strong class="stat-value">${money(c.adminCommission)}</strong>
-          <small>${pct(c.adminRate)} × facturación total de la academia (${money(c.academyBilling)}) · ${esc(pl)}</small>
+          ${(c.byAlly || []).length > 1
+    ? `<div class="ally-split">${c.byAlly.map((a) => `<span><b>${esc(a.name)}</b> ${money(a.earnings)} <small>(${pct(a.rate)} de ${money(a.billing)})</small></span>`).join('')}</div>`
+    : `<small>${pct((c.byAlly || [])[0]?.rate ?? c.adminRate)} × facturación${(c.byAlly || [])[0] ? ` de ${esc(c.byAlly[0].name)}` : ''} (${money(c.academyBilling)}) · ${esc(pl)}</small>`}
         </div>` : `
         <div class="commission-card">
           <div class="ladder-row">

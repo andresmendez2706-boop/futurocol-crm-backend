@@ -53,6 +53,8 @@ export async function loadAll() {
     tasks: data.tasks, messages: data.messages, settings: data.settings, constants: data.constants, today: data.today,
   });
   if (!S.period) S.period = data.me.prefs?.period || defaultPeriod();
+  if (S.ally === undefined) S.ally = data.me.prefs?.ally || '';
+  if (S.ally && !allyById(S.ally)) S.ally = '';
   S.version = (S.version || 0) + 1;
   return data;
 }
@@ -192,8 +194,28 @@ export function defaultPeriod() {
   return { type: 'month', year: y, month: m };
 }
 export const periodQuery = (p = S.period) => new URLSearchParams(
-  Object.fromEntries(Object.entries({ type: p.type, year: p.year, month: p.month }).filter(([, v]) => v !== undefined)),
+  Object.fromEntries(Object.entries({ type: p.type, year: p.year, month: p.month, ally: S.ally || undefined }).filter(([, v]) => v !== undefined)),
 ).toString();
+
+// ---------------------------------------------------------------- aliados (CUN, UNIR…)
+export const allies = () => S.settings.allies || [];
+export const allyById = (id) => allies().find((a) => a.id === id);
+export const allyName = (id) => allyById(id)?.name || '—';
+export const multiAlly = () => allies().length > 1;
+// Aliados que puede vender el usuario actual (admin: todos; asesor: los asignados o todos si no tiene).
+export function myAllies() {
+  const active = allies().filter((a) => a.active);
+  const ids = S.me?.allyIds || [];
+  return isAdmin() || !ids.length ? active : active.filter((a) => ids.includes(a.id));
+}
+// Programas del aliado (o el catálogo general si el aliado no tiene lista).
+export const programsFor = (allyId) => {
+  const a = allyById(allyId);
+  return a && a.programs.length ? a.programs : (S.constants.programs || []);
+};
+// Filtro de aliado compartido (Panel, Negocios, Contactos, Reportes, Embudo, Balance). '' = todos.
+export const inAllyFilter = (r) => !S.ally || r.allyId === S.ally;
+export const allyLabel = () => (S.ally ? allyName(S.ally) : 'Todos los aliados');
 export function periodLabel(p = S.period) {
   if (p.type === 'month') return `${MONTHS[p.month - 1]} ${p.year}`;
   if (p.type === 'year') return `Año ${p.year}`;

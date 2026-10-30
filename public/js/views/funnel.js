@@ -1,7 +1,7 @@
 import {
   S, api, esc, isAdmin, options, periodQuery, periodLabel, pct,
 } from '../core.js';
-import { periodPicker, emptyState } from '../ui.js';
+import { periodPicker, allyPicker, emptyState } from '../ui.js';
 import { drillDeals } from './reports.js';
 
 export const id = 'embudo';
@@ -22,6 +22,7 @@ export async function render() {
       <div><h1>Embudo de conversión</h1><p class="muted">Negocios creados en ${esc(periodLabel().toLowerCase())} · ${isAdmin() ? (u.userId ? 'por asesor' : 'vista general') : 'mis negocios'}</p></div>
       <div class="toolbar">
         ${isAdmin() ? `<select class="input input-sm" data-change="funnel-user">${options(S.users.map((x) => ({ value: x.id, label: x.name })), u.userId, { empty: 'General (todos)' })}</select>` : ''}
+        ${allyPicker()}
         ${periodPicker()}
       </div>
     </div>
