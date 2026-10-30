@@ -45,6 +45,7 @@ async function exportBackup() {
     expenses: expenses.map(withExtra(mapExpense)),
     stages: await settings.getStages(),
     commissions: await settings.getCommissions(),
+    currency: await settings.getCurrency(),
   };
 }
 
@@ -273,6 +274,7 @@ async function importBackup(raw, { mode = 'merge', actor }) {
       if (missing.length) stages = settings.normalizeStages([...stages, ...missing]);
     }
     const stageAliases = new Map(stages.map((s) => [s.label.toLowerCase(), s.id]));
+    if (mode === 'replace' && ['COP', 'USD', 'EUR'].includes(raw?.currency)) await settings.set('currency', raw.currency, client);
     const commissions = normalizeCommissions(data.commissions);
     if (commissions && (mode === 'replace' || !(await client.query("SELECT 1 FROM settings WHERE key = 'commissions'")).rows[0])) {
       await settings.set('commissions', { ...(await settings.getCommissions(client)), ...commissions }, client);

@@ -1,7 +1,7 @@
 import {
   S, api, esc, icon, isAdmin, canManage, userName, contactById, dealById, money, compactMoney, pct, fmtDate,
   fmtDateTime, stageLabel, options, dealProbability, isClosedStage, inPeriod, billingDate, periodLabel,
-  savePrefs, cachedDashboard, canEditTask, lightDot, TASK_TYPE_LABELS, WON, LOST,
+  savePrefs, cachedDashboard, canEditTask, currencyCode, lightDot, TASK_TYPE_LABELS, WON, LOST,
 } from '../core.js';
 import { taskForm } from './tasks.js';
 import {
@@ -187,7 +187,7 @@ export function dealForm(deal = null, { contactId, stage } = {}) {
     fields: [
       { name: 'title', label: 'Título', value: d.title, required: true },
       { name: 'contactId', label: 'Contacto', type: 'select', value: d.contactId || contactId, empty: 'Selecciona un contacto', required: true, options: contacts.map((c) => ({ value: c.id, label: c.name })) },
-      { name: 'value', label: 'Valor (COP)', type: 'number', min: 0, step: 1000, value: d.value ?? '' },
+      { name: 'value', label: `Valor (${currencyCode()})`, type: 'number', min: 0, step: 1000, value: d.value ?? '' },
       deal ? null : { name: 'stage', label: 'Etapa', type: 'select', value: stage || S.settings.stages[0]?.id, options: S.settings.stages.map((s) => ({ value: s.id, label: s.label })) },
       { name: 'dealType', label: 'Tipo', type: 'select', value: d.dealType, empty: '—', options: S.constants.dealTypes },
       { name: 'product', label: 'Producto / programa', type: 'select', value: d.product, empty: '—', options: S.constants.programs },

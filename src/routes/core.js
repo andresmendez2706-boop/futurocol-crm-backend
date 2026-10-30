@@ -17,19 +17,20 @@ const router = express.Router();
 
 // Carga inicial: todo lo que el usuario puede ver, ya filtrado por sus permisos.
 router.get('/bootstrap', ah(async (req, res) => {
-  const [users, companies, contacts, deals, tasks, messages, stages, commissions] = await Promise.all([
+  const [users, companies, contacts, deals, tasks, messages, stages, commissions, currency] = await Promise.all([
     repo.listUsers(req.user), repo.listCompanies(req.user), repo.listContacts(req.user), repo.listDeals(req.user),
     repo.listTasks(req.user), repo.listMessages(req.user), settings.getStages(), settings.getCommissions(),
+    settings.getCurrency(),
   ]);
   res.json({
     me: req.user,
     today: todayISO(),
     users, companies, contacts, deals, tasks, messages,
-    settings: { stages, commissions },
+    settings: { stages, commissions, currency },
     constants: {
       programs: constants.PROGRAMS, dealTypes: constants.DEAL_TYPES, taskTypes: constants.TASK_TYPES,
       activityTypes: constants.ACTIVITY_TYPES, closedStages: constants.CLOSED_STAGES,
-      protectedStages: constants.PROTECTED_STAGES,
+      protectedStages: constants.PROTECTED_STAGES, currencies: constants.CURRENCIES,
     },
   });
 }));

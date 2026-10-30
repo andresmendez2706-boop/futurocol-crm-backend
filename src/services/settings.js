@@ -1,7 +1,9 @@
 'use strict';
 
 const db = require('../db');
-const { DEFAULT_STAGES, DEFAULT_COMMISSIONS, PROTECTED_STAGES } = require('../constants');
+const {
+  DEFAULT_STAGES, DEFAULT_COMMISSIONS, PROTECTED_STAGES, CURRENCIES, DEFAULT_CURRENCY,
+} = require('../constants');
 const { HttpError } = require('../util');
 
 async function get(key, fallback, client = db) {
@@ -20,6 +22,9 @@ async function set(key, value, client = db) {
 const getStages = (client) => get('stages', DEFAULT_STAGES, client).then(normalizeStages);
 const getCommissions = (client) =>
   get('commissions', DEFAULT_COMMISSIONS, client).then((c) => ({ ...DEFAULT_COMMISSIONS, ...c }));
+
+const getCurrency = (client) => get('currency', DEFAULT_CURRENCY, client)
+  .then((c) => (CURRENCIES.includes(c) ? c : DEFAULT_CURRENCY));
 
 const slug = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase()
   .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 40) || 'etapa';
@@ -68,4 +73,4 @@ function validateStagesInput(stages) {
   }
 }
 
-module.exports = { get, set, getStages, getCommissions, normalizeStages, validateStagesInput, slug };
+module.exports = { get, set, getStages, getCommissions, getCurrency, normalizeStages, validateStagesInput, slug };

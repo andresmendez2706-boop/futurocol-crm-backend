@@ -92,12 +92,29 @@ export const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
 }[c]));
 
-const moneyFmt = new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP', maximumFractionDigits: 0 });
-export const money = (n) => moneyFmt.format(Number(n) || 0);
+// Moneda elegida en Configuración. Cada valor se muestra con su moneda para que no haya confusión
+// (antes "$ 4.500.000" parecía dólares). Solo cambia cómo se ven los valores; no convierte montos.
+export const CURRENCIES = {
+  COP: { label: 'Pesos colombianos (COP)', prefix: 'COP ', decimals: 0, sample: 'COP 4.500.000' },
+  USD: { label: 'Dólares estadounidenses (USD)', prefix: 'US$ ', decimals: 2, sample: 'US$ 4.500.000' },
+  EUR: { label: 'Euros (EUR)', prefix: '€ ', decimals: 2, sample: '€ 4.500.000' },
+};
+export const currencyCode = () => (CURRENCIES[S.settings?.currency] ? S.settings.currency : 'COP');
+const cur = () => CURRENCIES[currencyCode()];
+const num = (v, decimals) => v.toLocaleString('es-CO', { minimumFractionDigits: 0, maximumFractionDigits: decimals });
+
+export const money = (n) => {
+  const v = Number(n) || 0;
+  const c = cur();
+  return `${v < 0 ? '-' : ''}${c.prefix}${num(Math.abs(v), c.decimals)}`;
+};
 export const compactMoney = (n) => {
   const v = Number(n) || 0;
-  if (Math.abs(v) >= 1e9) return `$${(v / 1e9).toFixed(1).replace('.0', '')} mil M`;
-  if (Math.abs(v) >= 1e6) return `$${(v / 1e6).toFixed(1).replace('.0', '')} M`;
+  const c = cur();
+  const sign = v < 0 ? '-' : '';
+  const a = Math.abs(v);
+  if (a >= 1e9) return `${sign}${c.prefix}${num(a / 1e9, 1)} mil M`;
+  if (a >= 1e6) return `${sign}${c.prefix}${num(a / 1e6, 1)} M`;
   return money(v);
 };
 export const pct = (n) => `${Number(n || 0).toLocaleString('es-CO', { maximumFractionDigits: 2 })}%`;

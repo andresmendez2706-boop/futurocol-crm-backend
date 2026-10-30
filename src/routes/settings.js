@@ -6,14 +6,28 @@ const { requireAdmin } = require('../auth');
 const { audit } = require('../audit');
 const realtime = require('../realtime');
 const settings = require('../services/settings');
-const { PROTECTED_STAGES, WON, LOST } = require('../constants');
+const {
+  PROTECTED_STAGES, WON, LOST, CURRENCIES,
+} = require('../constants');
 const { ah, HttpError } = require('../util');
 const { z, parse } = require('../validate');
 
 const router = express.Router();
 
 router.get('/', ah(async (req, res) => {
-  res.json({ stages: await settings.getStages(), commissions: await settings.getCommissions() });
+  res.json({ stages: await settings.getStages(), commissions: await settings.getCommissions(), currency: await settings.getCurrency() });
+}));
+
+// Moneda en la que se muestran todos los valores (solo cambia cómo se ven; no convierte montos).
+router.put('/currency', requireAdmin, ah(async (req, res) => {
+  const { currency } = parse(z.object({ currency: z.enum(CURRENCIES) }), req.body);
+  const old = await settings.getCurrency();
+  await settings.set('currency', currency);
+  if (old !== currency) {
+    await audit({ by: req.user, action: 'configuración', entityType: 'moneda', entityLabel: 'Moneda', detail: `${old} → ${currency}` });
+  }
+  realtime.notifyChange('all');
+  res.json({ currency });
 }));
 
 // Etapas: agregar / renombrar / reordenar / eliminar sin tocar código.

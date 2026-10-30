@@ -76,3 +76,15 @@ test('usuarios: correo obligatorio, válido y único', async () => {
   assert.equal(ok.status, 201);
   assert.equal(ok.body.commissionRate, 8);
 });
+
+test('moneda: COP por defecto; solo el admin la cambia; queda en la auditoría', async () => {
+  assert.equal((await s.a1.get('/api/bootstrap')).body.settings.currency, 'COP');
+  assert.equal((await s.a1.put('/api/settings/currency', { currency: 'USD' })).status, 403);
+  assert.equal((await s.admin.put('/api/settings/currency', { currency: 'GBP' })).status, 400);
+  const r = await s.admin.put('/api/settings/currency', { currency: 'EUR' });
+  assert.equal(r.status, 200);
+  assert.equal((await s.a1.get('/api/bootstrap')).body.settings.currency, 'EUR');
+  const { rows } = await db.query("SELECT detail FROM audit_log WHERE entity_type = 'moneda'");
+  assert.equal(rows[0].detail, 'COP → EUR');
+  assert.equal((await s.admin.get('/api/admin/backup')).body.currency, 'EUR');
+});

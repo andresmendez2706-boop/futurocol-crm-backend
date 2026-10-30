@@ -83,7 +83,7 @@ const expenseSchema = z.object({
   description: z.string().trim().max(300).optional().nullable(),
   amount: z.coerce.number().min(0, 'el valor no puede ser negativo').max(1e13),
 });
-const fmtMoney = (n) => `$${Number(n).toLocaleString('es-CO')}`;
+const fmtMoney = (n) => Number(n).toLocaleString('es-CO');
 
 router.post('/expenses', ah(async (req, res) => {
   const d = parse(expenseSchema, req.body);

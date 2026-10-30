@@ -666,3 +666,12 @@ td.negative, td.negative b { color: var(--red); }
 .code-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 .code-legend .lg-green { background: #4ade80; }
 .code-legend .lg-red { background: #ff6b6b; }
+
+/* ---------- configuración: moneda */
+.currency-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 8px 0 12px; }
+.currency-option { display: flex; flex-direction: column; gap: 4px; border: 2px solid var(--border); border-radius: 12px; padding: 12px 14px; cursor: pointer; position: relative; }
+.currency-option input { position: absolute; opacity: 0; pointer-events: none; }
+.currency-option span { color: var(--muted); font-family: ui-monospace, monospace; font-size: .9rem; }
+.currency-option:hover { border-color: var(--primary-50); background: #faf9fe; }
+.currency-option.active { border-color: var(--primary); background: var(--primary-50); }
+@media (max-width: 760px) { .currency-grid { grid-template-columns: 1fr; } }

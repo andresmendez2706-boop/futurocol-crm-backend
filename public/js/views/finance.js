@@ -1,5 +1,5 @@
 import {
-  S, api, esc, icon, money, compactMoney, pct, options, MONTHS, MONTHS_SHORT,
+  S, api, esc, icon, money, compactMoney, pct, options, MONTHS, MONTHS_SHORT, currencyCode,
 } from '../core.js';
 import {
   emptyState, formModal, confirmDialog, alertDialog, toast,
@@ -149,8 +149,8 @@ export async function render() {
         <p class="muted">${sum.margin === null
     ? (sum.level === 'sin-datos' ? 'No hubo movimiento en este período.' : 'Hubo costos pero no hubo facturación.')
     : sum.margin >= 0
-      ? `De cada $100 de tu ganancia (${pct(f.adminRate)}), te quedan <b>$${Math.round(sum.margin)}</b> después de comisiones y gastos.`
-      : `Las comisiones y gastos superaron tu ganancia: por cada $100 que ganaste, perdiste <b>$${Math.abs(Math.round(sum.margin))}</b>.`}</p>
+      ? `De cada ${money(100)} de tu ganancia (${pct(f.adminRate)}), te quedan <b>${money(Math.round(sum.margin))}</b> después de comisiones y gastos.`
+      : `Las comisiones y gastos superaron tu ganancia: por cada ${money(100)} que ganaste, perdiste <b>${money(Math.abs(Math.round(sum.margin)))}</b>.`}</p>
         <ul class="profit-scale">
           <li><span class="dot dot-verde"></span> Excelente: ${th.excelente}% o más</li>
           <li><span class="dot dot-amarillo"></span> Bueno: ${th.bueno}% a ${th.excelente}%</li>
@@ -218,7 +218,7 @@ function expensesCard(f, u, sum) {
     </div>
     <form class="expense-form" id="expense-form" autocomplete="off">
       <input class="input" id="exp-category" name="category" list="exp-categories" placeholder="Categoría: Marketing…" required aria-label="Categoría">
-      <input class="input" id="exp-amount" name="amount" inputmode="numeric" placeholder="Valor: 1.500.000" required aria-label="Valor">
+      <input class="input" id="exp-amount" name="amount" inputmode="numeric" placeholder="Valor (${currencyCode()}): 1.500.000" required aria-label="Valor">
       <input class="input" id="exp-description" name="description" placeholder="Descripción (opcional)" maxlength="300" aria-label="Descripción">
       <button class="btn btn-primary" type="submit" title="Agregar gasto">${icon('plus')} Agregar gasto</button>
       <datalist id="exp-categories">${f.expenseCategories.map((c) => `<option value="${esc(c)}">`).join('')}</datalist>
@@ -375,7 +375,7 @@ export const actions = {
       fields: [
         { name: 'category', label: 'Categoría', value: e.category, required: true, full: true, list: 'exp-categories' },
         { name: 'description', label: 'Descripción', value: e.description, full: true },
-        { name: 'amount', label: 'Valor (COP)', value: Number(e.amount).toLocaleString('es-CO'), required: true, full: true },
+        { name: 'amount', label: `Valor (${currencyCode()})`, value: Number(e.amount).toLocaleString('es-CO'), required: true, full: true },
       ],
       onSubmit: async (v) => {
         const amount = parseAmount(v.amount);

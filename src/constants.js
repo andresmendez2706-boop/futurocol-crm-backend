@@ -59,6 +59,10 @@ const DEFAULT_COMMISSIONS = {
 // Categorías sugeridas para los gastos de operación (se puede escribir otra).
 const EXPENSE_CATEGORIES = ['Marketing', 'Planes móviles', 'Nómina / personal', 'Arriendo', 'Servicios', 'Plataformas / software', 'Otros'];
 
+// Monedas disponibles para mostrar los valores del CRM (Configuración → Moneda).
+const CURRENCIES = ['COP', 'USD', 'EUR'];
+const DEFAULT_CURRENCY = 'COP';
+
 // Semáforo de rentabilidad del Balance financiero: % que te queda de tu ganancia bruta.
 //   >= excelente → Excelente (verde) · >= bueno → Bueno (amarillo) · por debajo → Muy malo (rojo)
 const PROFIT_THRESHOLDS = { excelente: 40, bueno: 15 };
@@ -71,5 +75,5 @@ const AUDIT_ACTIONS = [
 
 module.exports = {
   PROGRAMS, DEAL_TYPES, TASK_TYPES, ACTIVITY_TYPES, DEFAULT_STAGES, PROTECTED_STAGES,
-  CLOSED_STAGES, WON, LOST, PROPOSAL_STAGE, DEFAULT_COMMISSIONS, AUDIT_ACTIONS, EXPENSE_CATEGORIES, PROFIT_THRESHOLDS,
+  CLOSED_STAGES, WON, LOST, PROPOSAL_STAGE, DEFAULT_COMMISSIONS, AUDIT_ACTIONS, EXPENSE_CATEGORIES, PROFIT_THRESHOLDS, CURRENCIES, DEFAULT_CURRENCY,
 };

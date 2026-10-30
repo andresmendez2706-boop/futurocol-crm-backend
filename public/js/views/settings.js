@@ -1,5 +1,5 @@
 import {
-  S, api, esc, icon, options, pct,
+  S, api, esc, icon, options, pct, CURRENCIES, currencyCode,
 } from '../core.js';
 import {
   openModal, confirmDialog, toast, alertDialog,
@@ -23,7 +23,18 @@ export function render() {
   const c = S.settings.commissions;
   const openCount = stages.filter((s) => !s.protected).length;
   return `
-    <div class="page-head"><div><h1>Configuración</h1><p class="muted">Etapas del pipeline y comisiones — sin tocar código</p></div></div>
+    <div class="page-head"><div><h1>Configuración</h1><p class="muted">Moneda, etapas del pipeline y comisiones — sin tocar código</p></div></div>
+    <section class="card">
+      <h3>Moneda</h3>
+      <p class="muted">Elige la moneda en la que se muestran todos los valores del CRM: negocios, facturación, comisiones y balance financiero.</p>
+      <div class="currency-grid">${Object.entries(CURRENCIES).map(([code, c]) => `
+        <label class="currency-option ${currencyCode() === code ? 'active' : ''}">
+          <input type="radio" name="currency" value="${code}" ${currencyCode() === code ? 'checked' : ''} data-change="currency-pick">
+          <strong>${esc(c.label)}</strong><span>${esc(c.sample)}</span>
+        </label>`).join('')}</div>
+      <p class="note">Cambiar la moneda solo cambia cómo se muestran los valores; <b>no convierte los montos</b>. Si cambias a dólares, un negocio de 4.500.000 se verá como US$ 4.500.000. Elige la moneda en la que el equipo registra los valores.</p>
+    </section>
+
     <section class="card">
       <div class="section-head"><h3>Etapas del pipeline</h3>
         <div class="toolbar"><button class="btn" data-action="stage-add">${icon('plus')} Agregar etapa</button>
@@ -132,6 +143,18 @@ export const actions = {
   'run-automations': async () => {
     const r = await api('POST', '/api/admin/automations/run');
     toast(r.created ? `${r.created} tarea(s) automática(s) creada(s)` : 'No hay tareas nuevas por crear');
+    await window.crm.refresh();
+  },
+};
+
+export const changes = {
+  'currency-pick': async (el) => {
+    const code = el.value;
+    if (code === currencyCode()) return;
+    const ok = await confirmDialog(`¿Mostrar todos los valores del CRM en ${CURRENCIES[code].label}?\n\nLos montos NO se convierten: solo cambia la moneda con la que se muestran.`, { title: 'Cambiar moneda', okText: 'Cambiar moneda' });
+    if (!ok) { window.crm.render(); return; }
+    await api('PUT', '/api/settings/currency', { currency: code });
+    toast(`Moneda cambiada a ${code}`);
     await window.crm.refresh();
   },
 };
