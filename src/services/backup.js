@@ -17,6 +17,10 @@ const settings = require('./settings');
 const { hashPassword } = require('../auth');
 const { listAllies } = require('./allies');
 const { audit } = require('../audit');
+const { mapDocument, decodeFile, META_COLUMNS } = require('./documents');
+
+const BACKUP_DOCUMENTS_MAX_BYTES = 30 * 1024 * 1024; // ~40 MB en base64, bajo el límite de 50 MB al restaurar
+const { DOCUMENT_TYPES } = require('../constants');
 const { PROGRAMS, LOST } = require('../constants');
 const {
   newId, mapUser, mapCompany, mapContact, mapDeal, mapTask, mapMessage, mapAudit, mapExpense,
@@ -31,6 +35,14 @@ async function exportBackup() {
     q('SELECT * FROM tasks ORDER BY created_at'), q('SELECT * FROM messages ORDER BY at'),
     q('SELECT * FROM audit_log ORDER BY at'), q('SELECT * FROM expenses ORDER BY year, month, created_at'),
   ]);
+  // Documentos de los negocios (el archivo va en base64 para que la copia quede completa).
+  // Límite de seguridad: si en total pesan demasiado, la copia lleva solo la lista (sin el archivo)
+  // para no agotar la memoria del servidor; los archivos siguen guardados en la base de datos.
+  const { rows: [{ total }] } = await db.query('SELECT coalesce(sum(size_bytes), 0)::bigint AS total FROM deal_documents');
+  const withFiles = Number(total) <= BACKUP_DOCUMENTS_MAX_BYTES;
+  const documents = withFiles
+    ? (await q('SELECT * FROM deal_documents ORDER BY created_at')).map((r) => ({ ...mapDocument(r), data: r.data.toString('base64') }))
+    : (await q(`SELECT ${META_COLUMNS} FROM deal_documents ORDER BY created_at`)).map(mapDocument);
   const withExtra = (mapper) => (r) => ({ ...(r.extra || {}), ...mapper(r) });
   return {
     app: 'futurocol-crm',
@@ -44,6 +56,8 @@ async function exportBackup() {
     messages: messages.map(withExtra(mapMessage)),
     auditLog: auditLog.map(withExtra(mapAudit)),
     expenses: expenses.map(withExtra(mapExpense)),
+    documents,
+    ...(withFiles ? {} : { documentsNote: 'Los documentos superan el límite de la copia: se incluye solo la lista, sin los archivos.' }),
     stages: await settings.getStages(),
     commissions: await settings.getCommissions(),
     allies: await listAllies(),
@@ -61,6 +75,7 @@ const COLLECTIONS = {
   messages: ['messages', 'mensajes', 'chat'],
   auditLog: ['auditlog', 'audit', 'auditoria', 'logs', 'log'],
   expenses: ['expenses', 'gastos'],
+  documents: ['documents', 'documentos', 'dealdocuments'],
   stages: ['stages', 'etapas', 'pipelinestages', 'pipeline'],
   allies: ['allies', 'aliados', 'universidades'],
   commissions: ['commissions', 'comisiones', 'commissionsettings', 'commissionconfig', 'commission'],
@@ -89,7 +104,7 @@ function extractCollections(raw) {
     }
   };
   visit(coerceJSON(raw), 0);
-  for (const k of ['users', 'companies', 'contacts', 'deals', 'tasks', 'messages', 'auditLog', 'expenses', 'allies']) {
+  for (const k of ['users', 'companies', 'contacts', 'deals', 'tasks', 'messages', 'auditLog', 'expenses', 'allies', 'documents']) {
     const v = out[k];
     if (v && !Array.isArray(v) && typeof v === 'object') out[k] = Object.entries(v).map(([id, r]) => ({ id, ...r }));
     if (!Array.isArray(out[k])) out[k] = [];
@@ -394,6 +409,24 @@ async function importBackup(raw, { mode = 'merge', actor }) {
 
     // ---------------- tareas
     const dealIds = new Set((await client.query('SELECT id FROM deals')).rows.map((x) => x.id));
+
+    // ---------------- documentos de los negocios
+    for (const rec of data.documents) {
+      const id = str(rec.id);
+      const dealId = str(rec.dealId ?? rec.deal_id);
+      const type = DOCUMENT_TYPES.some((t) => t.id === rec.type) ? rec.type : 'otro';
+      let file = null;
+      try { file = decodeFile(rec.data); } catch { file = null; }
+      if (!id || !dealId || !dealIds.has(dealId) || !file) { count('documents', 'skipped'); continue; }
+      const byId = str(rec.uploadedBy);
+      const res = await client.query(
+        `INSERT INTO deal_documents (id, deal_id, doc_type, file_name, mime_type, size_bytes, data, uploaded_by, uploaded_by_name, created_at)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,(SELECT id FROM users WHERE id = $8),$9,$10) ON CONFLICT (id) DO NOTHING`,
+        [id, dealId, type, str(rec.fileName) || 'documento', file.mime, file.buf.length, file.buf,
+          byId ? userMap.get(byId) || byId : null, str(rec.uploadedByName), toTs(rec.createdAt) || new Date().toISOString()],
+      );
+      count('documents', res.rowCount ? 'inserted' : 'skipped');
+    }
     for (const rec of data.tasks) {
       const r = reader(rec);
       const id = str(r.get('id', '_id')) || hashId('t', rec);

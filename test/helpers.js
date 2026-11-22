@@ -50,4 +50,23 @@ async function seed() {
   };
 }
 
-module.exports = { app, request, db, resetDb, createUser, login, seed };
+// Archivo PDF mínimo válido (para las pruebas de documentos).
+const PDF_BASE64 = Buffer.from('%PDF-1.4\n1 0 obj<<>>endobj\ntrailer<<>>\n%%EOF').toString('base64');
+
+// Adjunta cédula, diploma y acta de grado (obligatorios para marcar un negocio como ganado).
+async function attachRequiredDocs(client, dealId) {
+  for (const type of ['cedula', 'diploma', 'acta_grado']) {
+    const r = await client.post(`/api/deals/${dealId}/documents`, { type, fileName: `${type}.pdf`, data: PDF_BASE64 });
+    if (r.status !== 201) throw new Error(`adjuntar ${type} falló: ${r.status} ${JSON.stringify(r.body)}`);
+  }
+}
+
+// Marca un negocio como ganado adjuntando antes los documentos obligatorios.
+async function win(client, dealId) {
+  await attachRequiredDocs(client, dealId);
+  return client.patch(`/api/deals/${dealId}`, { stage: 'ganado' });
+}
+
+module.exports = {
+  app, request, db, resetDb, createUser, login, seed, PDF_BASE64, attachRequiredDocs, win,
+};

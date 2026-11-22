@@ -3,6 +3,7 @@ import {
   MONTHS_SHORT, ACTIVITY_LABELS, allyLabel, multiAlly,
 } from '../core.js';
 import { periodPicker, allyPicker, emptyState } from '../ui.js';
+import { duplicatesBanner } from './contacts.js';
 
 export const id = 'panel';
 export const title = 'Panel';
@@ -78,6 +79,7 @@ export async function render() {
       <div><h1>Panel</h1><p class="muted">Hola, ${esc(S.me.name.split(' ')[0])}. Resumen de ${esc(pl.toLowerCase())}${multiAlly() ? ` · ${esc(allyLabel())}` : ''}.</p></div>
       <div class="toolbar">${allyPicker()}${periodPicker()}</div>
     </div>
+    ${duplicatesBanner()}
 
     <section class="stats-grid">
       ${card('Contactos del período', c.contacts.toLocaleString('es-CO'), { sub: `leads creados · ${esc(pl)}${S.period.type !== 'all' ? ` · ${c.contactsTotal.toLocaleString('es-CO')} en total` : ''}`, action: 'data-action="go-contacts"' })}

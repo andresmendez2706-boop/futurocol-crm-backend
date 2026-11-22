@@ -2,7 +2,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { db, seed } = require('./helpers');
+const { db, seed, win } = require('./helpers');
 const { todayISO } = require('../src/util');
 
 let s;
@@ -56,7 +56,7 @@ test('si ya tiene motivo, puede pasar a perdido sin pedirlo otra vez', async () 
 
 test('mover a ganado registra fecha de cierre automática', async () => {
   const d = (await s.a1.post('/api/deals', { title: 'G', contactId: contact.id, value: 100 })).body;
-  const r = (await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' })).body;
+  const r = (await win(s.a1, d.id)).body;
   assert.equal(r.closeDate, todayISO());
 });
 

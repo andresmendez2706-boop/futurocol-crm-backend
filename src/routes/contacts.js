@@ -7,6 +7,7 @@ const { assertCanManage, isAdmin } = require('../permissions');
 const { audit } = require('../audit');
 const realtime = require('../realtime');
 const repo = require('../services/repo');
+const { findDuplicateGroups } = require('../services/duplicates');
 const { resolveAssignee, userName } = require('../services/ownership');
 const { resolveAlly, assertProgram, listAllies } = require('../services/allies');
 const { PROGRAMS, ACTIVITY_TYPES } = require('../constants');
@@ -38,7 +39,7 @@ async function findDuplicates({ email, phone, excludeId }, viewer) {
     `SELECT c.id, c.name, c.email, c.phone, c.assigned_to, u.name AS owner_name
        FROM contacts c LEFT JOIN users u ON u.id = c.assigned_to
       WHERE c.id IS DISTINCT FROM $3
-        AND (($1::text IS NOT NULL AND lower(c.email) = lower($1))
+        AND (($1::text IS NOT NULL AND lower(trim(c.email)) = lower(trim($1)))
           OR ($2::text <> '' AND (
                 regexp_replace(coalesce(c.phone, ''), '\\D', '', 'g') = $2
                 -- mismo número con o sin indicativo (+57): se comparan los últimos 10 dígitos
@@ -67,6 +68,9 @@ async function assertCompany(companyId) {
 }
 
 router.get('/', ah(async (req, res) => res.json(await repo.listContacts(req.user))));
+
+// Alerta: todos los grupos de posibles leads duplicados que el usuario puede ver.
+router.get('/duplicates', ah(async (req, res) => res.json(await findDuplicateGroups(req.user))));
 
 router.post('/check-duplicates', ah(async (req, res) => {
   const q = parse(z.object({ email: optText(200), phone: optText(50), excludeId: optText(100) }), req.body);
@@ -188,6 +192,7 @@ router.post('/import', requireAdmin, ah(async (req, res) => {
     const companies = (await client.query('SELECT id, name FROM companies')).rows;
     let created = 0;
     let skipped = 0;
+    const newIds = [];
     const errors = [];
     for (const [i, r] of records.entries()) {
       const name = pick(r, 'nombre', 'name');
@@ -209,16 +214,25 @@ router.post('/import', requireAdmin, ah(async (req, res) => {
         const norm = (s) => s.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
         prog = programs.find((p) => norm(p) === norm(prog)) || null;
       }
+      const id = newId('c');
+      newIds.push(id);
       await client.query(
         `INSERT INTO contacts (id, name, phone, email, company_id, program, city, notes, assigned_to, ally_id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-        [newId('c'), name, pick(r, 'telefono', 'phone'), pick(r, 'email', 'correo'), company?.id || null, prog,
+        [id, name, pick(r, 'telefono', 'phone'), pick(r, 'email', 'correo'), company?.id || null, prog,
           pick(r, 'ciudad', 'city'), pick(r, 'notas', 'notes'), ownerUser?.id || req.user.id, ally.id],
       );
       created++;
     }
-    await audit({ client, by: req.user, action: 'importación', entityType: 'contacto', detail: `CSV: ${created} creados, ${skipped} omitidos` });
-    return { created, skipped, errors };
+    // Cuántos de los importados quedaron como posible duplicado (entre sí o con los existentes).
+    const fresh = new Set(newIds);
+    const groups = (await findDuplicateGroups(req.user, client)).filter((g) => g.contacts.some((c) => fresh.has(c.id)));
+    const duplicates = groups.reduce((n, g) => n + g.contacts.filter((c) => fresh.has(c.id)).length, 0);
+    await audit({
+      client, by: req.user, action: 'importación', entityType: 'contacto',
+      detail: `CSV: ${created} creados, ${skipped} omitidos${duplicates ? `, ${duplicates} posible(s) duplicado(s)` : ''}`,
+    });
+    return { created, skipped, errors, duplicates };
   });
   realtime.notifyChange('all');
   res.json(result);

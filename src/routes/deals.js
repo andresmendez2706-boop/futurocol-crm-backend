@@ -11,7 +11,8 @@ const settings = require('../services/settings');
 const { planStageChange } = require('../services/stageChange');
 const { resolveAssignee, userName } = require('../services/ownership');
 const { resolveAlly, assertProgram } = require('../services/allies');
-const { DEAL_TYPES } = require('../constants');
+const documents = require('../services/documents');
+const { DEAL_TYPES, DOCUMENT_TYPES, WON } = require('../constants');
 const { toCSV } = require('../csv');
 const {
   ah, HttpError, newId, mapDeal, buildSet,
@@ -60,6 +61,8 @@ router.post('/', ah(async (req, res) => {
   const stages = await settings.getStages();
   const stage = data.stage || stages[0].id;
   const plan = planStageChange({ current: null, nextStage: stage, lossReason: data.lossReason, stages, user: req.user });
+  // Un negocio nuevo aún no tiene documentos: no puede nacer como ganado.
+  if (stage === WON) await documents.assertRequiredForWin(null);
   const assignedTo = await resolveAssignee(req.user, data.assignedTo);
   const { rows } = await db.query(
     `INSERT INTO deals (id, title, contact_id, value, stage, deal_type, product, convocatoria, probability,
@@ -105,6 +108,8 @@ router.patch('/:id', ah(async (req, res) => {
     let plan = null;
     if (data.stage !== undefined && data.stage !== current.stage) {
       plan = planStageChange({ current, nextStage: data.stage, lossReason: data.lossReason, stages, user: req.user });
+      // Obligatorio: cédula, diploma y acta de grado adjuntos antes de cerrar como ganado.
+      if (data.stage === WON) await documents.assertRequiredForWin(current.id, client);
       Object.assign(cols, plan.columns);
     }
     let reassigned = null;
@@ -143,6 +148,87 @@ router.delete('/:id', requireAdmin, ah(async (req, res) => {
   const { rows } = await db.query('DELETE FROM deals WHERE id = $1 RETURNING title', [req.params.id]);
   if (!rows[0]) throw new HttpError(404, 'Negocio no encontrado');
   await audit({ by: req.user, action: 'eliminación', entityType: 'negocio', entityLabel: rows[0].title });
+  realtime.notifyChange('deals');
+  res.json({ ok: true });
+}));
+
+// ---- Documentos del negocio (cédula, diploma, acta de grado, otros) ----
+// Solo los ve y gestiona quien puede gestionar el negocio (su responsable o el admin).
+async function manageableDeal(user, dealId, client = db, { lock = false } = {}) {
+  const { rows } = await client.query(`SELECT * FROM deals WHERE id = $1${lock ? ' FOR UPDATE' : ''}`, [dealId]);
+  if (!rows[0]) throw new HttpError(404, 'Negocio no encontrado');
+  assertCanManage(user, rows[0], 'este negocio');
+  return rows[0];
+}
+
+const cleanFileName = (name) => String(name || '').replace(/[\u0000-\u001f\u007f/\\]/g, '').trim().slice(0, 200) || 'documento';
+
+router.get('/:id/documents', ah(async (req, res) => {
+  const deal = await manageableDeal(req.user, req.params.id);
+  res.json((await documents.listMetaByDeal([deal.id])).get(deal.id) || []);
+}));
+
+router.post('/:id/documents', ah(async (req, res) => {
+  const data = parse(z.object({
+    type: z.enum(DOCUMENT_TYPES.map((t) => t.id)),
+    fileName: reqText(300),
+    data: z.string().min(1).max(8_000_000),
+  }), req.body);
+  const { buf, mime } = documents.decodeFile(data.data);
+  const doc = await db.tx(async (client) => {
+    const deal = await manageableDeal(req.user, req.params.id, client, { lock: true });
+    const { rows } = await client.query(
+      `INSERT INTO deal_documents (id, deal_id, doc_type, file_name, mime_type, size_bytes, data, uploaded_by, uploaded_by_name)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING ${documents.META_COLUMNS}`,
+      [newId('doc'), deal.id, data.type, cleanFileName(data.fileName), mime, buf.length, buf, req.user.id, req.user.name],
+    );
+    await audit({
+      client, by: req.user, action: 'creación', entityType: 'documento', entityLabel: deal.title,
+      detail: `${documents.typeLabel(data.type)}: ${rows[0].file_name}`,
+    });
+    return rows[0];
+  });
+  realtime.notifyChange('deals');
+  res.status(201).json(documents.mapDocument(doc));
+}));
+
+router.get('/:id/documents/:docId', ah(async (req, res) => {
+  const deal = await manageableDeal(req.user, req.params.id);
+  const { rows } = await db.query('SELECT * FROM deal_documents WHERE id = $1 AND deal_id = $2', [req.params.docId, deal.id]);
+  const doc = rows[0];
+  if (!doc) throw new HttpError(404, 'Documento no encontrado');
+  const ascii = doc.file_name.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_');
+  const disposition = req.query.download ? 'attachment' : 'inline';
+  res.set('Content-Type', doc.mime_type);
+  res.set('Content-Length', String(doc.data.length));
+  res.set('Content-Disposition', `${disposition}; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(doc.file_name)}`);
+  res.set('Cache-Control', 'private, no-store');
+  res.send(doc.data);
+}));
+
+router.delete('/:id/documents/:docId', ah(async (req, res) => {
+  await db.tx(async (client) => {
+    const deal = await manageableDeal(req.user, req.params.id, client, { lock: true });
+    const { rows } = await client.query(
+      'SELECT id, doc_type, file_name FROM deal_documents WHERE id = $1 AND deal_id = $2', [req.params.docId, deal.id],
+    );
+    const doc = rows[0];
+    if (!doc) throw new HttpError(404, 'Documento no encontrado');
+    // Un negocio ganado no puede quedarse sin un documento obligatorio.
+    if (deal.stage === WON && doc.doc_type !== 'otro') {
+      const { rows: same } = await client.query(
+        'SELECT count(*)::int AS n FROM deal_documents WHERE deal_id = $1 AND doc_type = $2', [deal.id, doc.doc_type],
+      );
+      if (same[0].n <= 1) {
+        throw new HttpError(422, `El negocio está ganado: la ${documents.typeLabel(doc.doc_type).toLowerCase()} es obligatoria. Sube primero el reemplazo y luego elimina este archivo.`, { code: 'DOCUMENTS_REQUIRED' });
+      }
+    }
+    await client.query('DELETE FROM deal_documents WHERE id = $1', [doc.id]);
+    await audit({
+      client, by: req.user, action: 'eliminación', entityType: 'documento', entityLabel: deal.title,
+      detail: `${documents.typeLabel(doc.doc_type)}: ${doc.file_name}`,
+    });
+  });
   realtime.notifyChange('deals');
   res.json({ ok: true });
 }));

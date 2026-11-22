@@ -4,6 +4,7 @@
 
 const db = require('../db');
 const { isAdmin } = require('../permissions');
+const { listMetaByDeal } = require('./documents');
 const {
   mapUser, mapCompany, mapContact, mapDeal, mapTask, mapMessage,
 } = require('../util');
@@ -48,7 +49,9 @@ async function listDeals(viewer) {
   const { rows } = isAdmin(viewer)
     ? await db.query('SELECT * FROM deals ORDER BY created_at DESC')
     : await db.query('SELECT * FROM deals WHERE assigned_to = $1 ORDER BY created_at DESC', [viewer.id]);
-  return rows.map(mapDeal);
+  // Cada negocio incluye la lista de sus documentos (solo datos, sin el archivo).
+  const docs = await listMetaByDeal(rows.map((r) => r.id));
+  return rows.map((r) => ({ ...mapDeal(r), documents: docs.get(r.id) || [] }));
 }
 
 async function listAllDeals(client = db) {

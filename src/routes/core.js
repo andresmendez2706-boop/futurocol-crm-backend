@@ -8,6 +8,7 @@ const repo = require('../services/repo');
 const settings = require('../services/settings');
 const { listAllies } = require('../services/allies');
 const metrics = require('../services/metrics');
+const { findDuplicateGroups } = require('../services/duplicates');
 const realtime = require('../realtime');
 const { parsePeriod } = require('../services/rules');
 const constants = require('../constants');
@@ -23,16 +24,18 @@ router.get('/bootstrap', ah(async (req, res) => {
     repo.listTasks(req.user), repo.listMessages(req.user), settings.getStages(), settings.getCommissions(),
     settings.getCurrency(),
   ]);
-  const allies = await listAllies();
+  const [allies, duplicates] = await Promise.all([listAllies(), findDuplicateGroups(req.user)]);
   res.json({
     me: req.user,
     today: todayISO(),
-    users, companies, contacts, deals, tasks, messages,
+    users, companies, contacts, deals, tasks, messages, duplicates,
     settings: { stages, commissions, currency, allies },
     constants: {
       programs: constants.PROGRAMS, dealTypes: constants.DEAL_TYPES, taskTypes: constants.TASK_TYPES,
       activityTypes: constants.ACTIVITY_TYPES, closedStages: constants.CLOSED_STAGES,
       protectedStages: constants.PROTECTED_STAGES, currencies: constants.CURRENCIES,
+      documentTypes: constants.DOCUMENT_TYPES, maxDocumentBytes: constants.MAX_DOCUMENT_BYTES,
+      documentMimeTypes: constants.DOCUMENT_MIME_TYPES,
     },
   });
 }));

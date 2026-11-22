@@ -2,7 +2,7 @@
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { db, seed } = require('./helpers');
+const { db, seed, win } = require('./helpers');
 
 let s;
 let unir;
@@ -33,12 +33,12 @@ test('el asesor solo vende los aliados asignados; el programa debe ser del aliad
   // el negocio hereda el aliado del contacto
   const d = (await s.a2.post('/api/deals', { title: 'Máster IA', contactId: c.id, value: 10000000, product: 'Máster en IA' })).body;
   assert.equal(d.allyId, unir.id);
-  await s.a2.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
+  await win(s.a2, d.id);
   // a1 vende todos (sin asignación): sin indicar aliado queda en el primero (CUN)
   const c1 = (await s.a1.post('/api/contacts', { name: 'Lead CUN', program: 'Ciberseguridad' })).body;
   assert.equal(c1.allyId, 'ally_cun');
   const d1 = (await s.a1.post('/api/deals', { title: 'Esp. Ciber', contactId: c1.id, value: 4000000 })).body;
-  await s.a1.patch(`/api/deals/${d1.id}`, { stage: 'ganado' });
+  await win(s.a1, d1.id);
 });
 
 test('ganancia de Futurocol = % de cada aliado × su facturación; vista por aliado y unificada', async () => {

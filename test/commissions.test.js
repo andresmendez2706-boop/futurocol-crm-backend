@@ -2,7 +2,7 @@
 
 const { test, after } = require('node:test');
 const assert = require('node:assert/strict');
-const { db, seed } = require('./helpers');
+const { db, seed, win } = require('./helpers');
 const { computeCommissions, taskLight } = require('../src/services/rules');
 
 after(() => db.pool.end());
@@ -59,8 +59,8 @@ test('cambiar la tasa de un asesor no afecta la del admin ni la de otros (API + 
   const c2 = (await s.a2.post('/api/contacts', { name: 'C2' })).body;
   const d1 = (await s.a1.post('/api/deals', { title: 'd1', contactId: c.id, value: 1000000 })).body;
   const d2 = (await s.a2.post('/api/deals', { title: 'd2', contactId: c2.id, value: 3000000 })).body;
-  await s.a1.patch(`/api/deals/${d1.id}`, { stage: 'ganado' });
-  await s.a2.patch(`/api/deals/${d2.id}`, { stage: 'ganado' });
+  await win(s.a1, d1.id);
+  await win(s.a2, d2.id);
 
   let panel = (await s.admin.get('/api/stats/dashboard?type=all')).body;
   assert.equal(panel.cards.billing, 4000000);
@@ -96,8 +96,8 @@ test('balance financiero: ganancia admin − comisiones de asesores, mes a mes',
   const c2 = (await s.a2.post('/api/contacts', { name: 'X2' })).body;
   const d1 = (await s.a1.post('/api/deals', { title: 'd1', contactId: c1.id, value: 10000000 })).body;
   const d2 = (await s.a2.post('/api/deals', { title: 'd2', contactId: c2.id, value: 4000000 })).body;
-  await s.a1.patch(`/api/deals/${d1.id}`, { stage: 'ganado' });
-  await s.a2.patch(`/api/deals/${d2.id}`, { stage: 'ganado' });
+  await win(s.a1, d1.id);
+  await win(s.a2, d2.id);
   await db.query("UPDATE deals SET close_date = '2026-03-15' WHERE id = $1", [d2.id]);
   const year = Number((await db.query('SELECT close_date FROM deals WHERE id = $1', [d1.id])).rows[0].close_date.slice(0, 4));
   const month = Number((await db.query('SELECT close_date FROM deals WHERE id = $1', [d1.id])).rows[0].close_date.slice(5, 7));
@@ -138,7 +138,7 @@ test('gastos de operación: ingreso manual del admin y descuento en el balance',
   await db.query("UPDATE allies SET commission_rate = 25 WHERE id = 'ally_cun'"); // CUN le paga 25% a Futurocol
   const c = (await s.a1.post('/api/contacts', { name: 'G' })).body;
   const d = (await s.a1.post('/api/deals', { title: 'g', contactId: c.id, value: 10000000 })).body;
-  await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
+  await win(s.a1, d.id);
   await db.query("UPDATE deals SET close_date = '2026-05-10' WHERE id = $1", [d.id]);
 
   // Solo el admin puede registrar gastos
@@ -189,7 +189,7 @@ test('rentabilidad con semáforo y vista general (todos los meses)', async () =>
   await db.query("UPDATE allies SET commission_rate = 25 WHERE id = 'ally_cun'"); // CUN le paga 25% a Futurocol
   const c = (await s.a1.post('/api/contacts', { name: 'R' })).body;
   const d = (await s.a1.post('/api/deals', { title: 'r', contactId: c.id, value: 8000000 })).body;
-  await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
+  await win(s.a1, d.id);
   await db.query("UPDATE deals SET close_date = '2025-11-20' WHERE id = $1", [d.id]);
   await s.admin.post('/api/admin/expenses', { year: 2026, month: 1, category: 'Marketing', amount: 100000 });
 

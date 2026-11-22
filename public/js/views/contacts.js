@@ -1,7 +1,7 @@
 import {
   S, api, esc, icon, isAdmin, canManage, canEditTask, userName, companyById, contactById, money, fmtDate, fmtDateTime,
   stageLabel, options, MONTHS, ACTIVITY_LABELS, TASK_TYPE_LABELS, lightDot, initials, savePrefs,
-  inAllyFilter, allyName, multiAlly, programsFor, myAllies,
+  inAllyFilter, allyName, multiAlly, programsFor, myAllies, duplicateIds, duplicateGroupOf,
 } from '../core.js';
 import {
   formModal, openModal, confirmDialog, alertDialog, toast, emptyState, assigneeField, allyPicker, allyField, bindAllyPrograms,
@@ -40,15 +40,58 @@ const waLink = (phone) => {
   return d ? `https://wa.me/${d}` : null;
 };
 
+// ---------------------------------------------------------------- alerta de leads duplicados
+const matchText = (g) => g.matches.map((m) => (m === 'correo' ? 'el mismo correo' : 'el mismo teléfono')).join(' y ');
+
+export function duplicatesBanner() {
+  const groups = S.duplicates || [];
+  if (!groups.length) return '';
+  const n = groups.reduce((a, g) => a + g.contacts.length, 0);
+  return `<div class="dup-banner" role="alert">${icon('alert')}
+    <div><strong>Alerta: ${groups.length} posible(s) lead(s) duplicado(s)</strong>
+      <small class="block">${n} contactos comparten teléfono o correo con otro contacto.</small></div>
+    <button class="btn btn-sm" data-action="open-duplicates">Revisar duplicados</button>
+  </div>`;
+}
+
+const dupChip = (c, dups) => (dups.has(c.id)
+  ? `<span class="chip chip-sm chip-dup" data-action="open-duplicates" data-id="${esc(c.id)}" title="Comparte teléfono o correo con otro contacto">${icon('alert')} Duplicado</span>` : '');
+
+function duplicatesHtml(groups) {
+  if (!groups.length) return '<p class="muted">No hay leads duplicados. 🎉</p>';
+  return `<p class="muted small">Contactos que tienen el mismo teléfono (con o sin +57) o el mismo correo. Revisa si es la misma persona y deja un solo registro${isAdmin() ? ' (puedes eliminar el sobrante)' : '; si el otro es de otro asesor, coordina con el administrador'}.</p>
+    ${groups.map((g) => `<div class="dup-group">
+      <div class="dup-group-head"><span class="chip chip-warn">${icon('alert')} Coinciden por ${esc(matchText(g))}</span><small class="muted">${g.contacts.length} contactos</small></div>
+      <ul>${g.contacts.map((c) => `<li>
+        ${c.id ? `<a href="#" data-action="open-contact" data-id="${esc(c.id)}"><strong>${esc(c.name)}</strong></a>` : `<span class="dup-hidden">${esc(c.name)}</span>`}
+        ${c.phone ? `<small>📞 ${esc(c.phone)}</small>` : ''}${c.email ? `<small>✉ ${esc(c.email)}</small>` : ''}
+        <small class="dup-owner">Responsable: <b>${esc(c.owner)}</b> · ${fmtDate(c.createdAt)}</small>
+      </li>`).join('')}</ul>
+    </div>`).join('')}`;
+}
+
+export function openDuplicates(onlyContactId) {
+  const all = S.duplicates || [];
+  const pick = () => (onlyContactId ? (S.duplicates || []).filter((g) => g.contacts.some((c) => c.id === onlyContactId)) : S.duplicates || []);
+  const m = openModal({
+    title: onlyContactId ? 'Posible lead duplicado' : `Leads duplicados (${all.length})`,
+    size: 'lg',
+    body: duplicatesHtml(pick()),
+    footer: '<span class="spacer"></span><button class="btn btn-primary" data-close>Cerrar</button>',
+    onData: () => m.setBody(duplicatesHtml(pick())),
+  });
+}
+
 export function render() {
   const u = ui();
   const list = filtered();
+  const dups = duplicateIds();
   const years = [...new Set(S.contacts.map((c) => new Date(c.createdAt).getFullYear()))].sort((a, b) => b - a);
   const body = !list.length ? emptyState('No hay contactos que coincidan.') : u.layout === 'panel'
     ? `<div class="cards-grid">${list.map((c) => `
         <div class="contact-card clickable" data-action="open-contact" data-id="${esc(c.id)}">
           <div class="contact-card-head"><div class="avatar sm">${esc(initials(c.name))}</div>
-            <div><strong>${esc(c.name)}</strong><small class="block muted">${esc(companyById(c.companyId)?.name || c.city || '')}</small></div></div>
+            <div><strong>${esc(c.name)}</strong> ${dupChip(c, dups)}<small class="block muted">${esc(companyById(c.companyId)?.name || c.city || '')}</small></div></div>
           <div class="contact-card-body">
             ${multiAlly() ? `<span class="chip chip-ally">${esc(allyName(c.allyId))}</span>` : ''}
             ${c.program ? `<span class="chip">${esc(c.program)}</span>` : ''}
@@ -59,7 +102,7 @@ export function render() {
     : `<div class="card no-pad"><div class="table-wrap"><table class="table">
         <thead><tr><th>Nombre</th>${multiAlly() ? '<th>Aliado</th>' : ''}<th>Teléfono</th><th>Correo</th><th>Empresa</th><th>Programa</th><th>Ciudad</th><th>Responsable</th><th>Creado</th><th></th></tr></thead>
         <tbody>${list.map((c) => `<tr class="clickable" data-action="open-contact" data-id="${esc(c.id)}">
-          <td><strong>${esc(c.name)}</strong></td>${multiAlly() ? `<td><span class="chip chip-sm chip-ally">${esc(allyName(c.allyId))}</span></td>` : ''}<td>${esc(c.phone || '—')}</td><td>${esc(c.email || '—')}</td>
+          <td><strong>${esc(c.name)}</strong> ${dupChip(c, dups)}</td>${multiAlly() ? `<td><span class="chip chip-sm chip-ally">${esc(allyName(c.allyId))}</span></td>` : ''}<td>${esc(c.phone || '—')}</td><td>${esc(c.email || '—')}</td>
           <td>${esc(companyById(c.companyId)?.name || '—')}</td><td>${esc(c.program || '—')}</td><td>${esc(c.city || '—')}</td>
           <td>${esc(userName(c.assignedTo))}</td><td>${fmtDate(c.createdAt)}</td>
           <td class="actions">${canManage(c) ? `<button class="icon-btn" data-action="edit-contact" data-id="${esc(c.id)}" title="Editar">${icon('edit')}</button>` : ''}
@@ -82,6 +125,7 @@ export function render() {
         <button class="btn btn-primary" data-action="new-contact">${icon('plus')} Nuevo contacto</button>
       </div>
     </div>
+    ${duplicatesBanner()}
     ${body}`;
 }
 
@@ -149,6 +193,9 @@ function detailHtml(c) {
       <div><small>Responsable</small><span>${esc(userName(c.assignedTo))}</span></div>
       <div><small>Creado</small><span>${fmtDateTime(c.createdAt)}</span></div>
     </div>
+    ${duplicateGroupOf(c.id) ? `<div class="dup-banner">${icon('alert')}
+      <div><strong>Posible lead duplicado</strong><small class="block">Otro contacto tiene ${esc(matchText(duplicateGroupOf(c.id)))}.</small></div>
+      <button class="btn btn-sm" data-action="open-duplicates" data-id="${esc(c.id)}">Ver coincidencias</button></div>` : ''}
     ${c.notes ? `<div class="notes">${esc(c.notes)}</div>` : ''}
 
     <div class="detail-columns">
@@ -208,6 +255,7 @@ export function openContact(contactId) {
 }
 
 export const actions = {
+  'open-duplicates': (el, e) => { e?.stopPropagation?.(); openDuplicates(el.dataset.id || null); },
   'new-contact': () => contactForm(),
   'open-contact': (el) => openContact(el.dataset.id),
   'edit-contact': (el) => contactForm(contactById(el.dataset.id)),
@@ -261,6 +309,6 @@ export const changes = {
     if (!ok) return;
     const r = await api('POST', '/api/contacts/import', { csv });
     await window.crm.refresh();
-    await alertDialog(`Importación terminada: ${r.created} creados, ${r.skipped} omitidos.${r.errors.length ? `\n\n${r.errors.slice(0, 10).join('\n')}` : ''}`, { title: 'Importar CSV' });
+    await alertDialog(`Importación terminada: ${r.created} creados, ${r.skipped} omitidos.${r.duplicates ? `\n\n⚠ Alerta: ${r.duplicates} de los contactos importados tienen el mismo teléfono o correo que otro contacto. Revísalos en "Revisar duplicados".` : ''}${r.errors.length ? `\n\n${r.errors.slice(0, 10).join('\n')}` : ''}`, { title: 'Importar CSV' });
   },
 };

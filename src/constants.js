@@ -56,6 +56,17 @@ const DEFAULT_COMMISSIONS = {
   asesorScales: [5, 8, 10], // escalas sugeridas para asesores
 };
 
+// Documentos de un negocio. Los obligatorios deben estar adjuntos para poder marcarlo como ganado.
+const DOCUMENT_TYPES = [
+  { id: 'cedula', label: 'Cédula', required: true },
+  { id: 'diploma', label: 'Diploma', required: true },
+  { id: 'acta_grado', label: 'Acta de grado', required: true },
+  { id: 'otro', label: 'Otro documento', required: false },
+];
+const REQUIRED_DOCUMENTS = DOCUMENT_TYPES.filter((d) => d.required).map((d) => d.id);
+const MAX_DOCUMENT_BYTES = 5 * 1024 * 1024; // 5 MB por archivo
+const DOCUMENT_MIME_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+
 // Categorías sugeridas para los gastos de operación (se puede escribir otra).
 const EXPENSE_CATEGORIES = ['Marketing', 'Planes móviles', 'Nómina / personal', 'Arriendo', 'Servicios', 'Plataformas / software', 'Otros'];
 
@@ -76,4 +87,5 @@ const AUDIT_ACTIONS = [
 module.exports = {
   PROGRAMS, DEAL_TYPES, TASK_TYPES, ACTIVITY_TYPES, DEFAULT_STAGES, PROTECTED_STAGES,
   CLOSED_STAGES, WON, LOST, PROPOSAL_STAGE, DEFAULT_COMMISSIONS, AUDIT_ACTIONS, EXPENSE_CATEGORIES, PROFIT_THRESHOLDS, CURRENCIES, DEFAULT_CURRENCY,
+  DOCUMENT_TYPES, REQUIRED_DOCUMENTS, MAX_DOCUMENT_BYTES, DOCUMENT_MIME_TYPES,
 };

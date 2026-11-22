@@ -683,3 +683,48 @@ td.negative, td.negative b { color: var(--red); }
 .ally-split small { color: rgba(255, 255, 255, .75); }
 .ally-checks { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 8px 0; }
 .ally-checks label { display: inline-flex; gap: 6px; align-items: center; font-weight: 600; color: var(--text); }
+
+/* ---------------------------------------------------------------- documentos del negocio */
+.chip-ok { background: var(--green-50); color: #1f7a3a; }
+.chip .ico, .deal-card .chip .ico { width: 13px; height: 13px; fill: currentColor; }
+p.small, .small { font-size: .82rem; }
+.deal-docs { margin: 14px 0 6px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-sm); background: #fcfbff; transition: box-shadow .3s, border-color .3s; }
+.deal-docs p.small { margin: 2px 0 10px; }
+.deal-docs.flash { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(26, 166, 232, .25); }
+.doc-list { display: flex; flex-direction: column; gap: 8px; }
+.doc-row { display: grid; grid-template-columns: 170px 1fr auto; gap: 10px; align-items: center; padding: 9px 10px; border-radius: var(--radius-sm); background: var(--surface); border: 1px solid #efedf6; }
+.doc-row.missing { border-color: #f6c9c8; background: #fff8f8; }
+.doc-type { display: flex; align-items: center; gap: 9px; }
+.doc-status { width: 24px; height: 24px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; font-size: .85rem; flex: none; background: #eceaf3; color: var(--muted); }
+.doc-row.ok .doc-status { background: var(--green); color: #fff; }
+.doc-row.missing .doc-status { background: var(--red); color: #fff; }
+.doc-files ul { list-style: none; margin: 0; padding: 0; }
+.doc-file { display: flex; align-items: center; gap: 8px; padding: 2px 0; }
+.doc-file-info { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+.doc-file a { display: inline-flex; align-items: center; gap: 5px; font-weight: 550; word-break: break-all; }
+.doc-file a .ico { width: 15px; height: 15px; fill: currentColor; flex: none; }
+.doc-file .icon-btn { margin-left: auto; flex: none; }
+.deal-card .chip-warn { width: fit-content; }
+.doc-missing { color: var(--red); font-weight: 600; font-size: .88rem; }
+.doc-upload { cursor: pointer; white-space: nowrap; }
+.doc-upload.loading { opacity: .55; pointer-events: none; }
+@media (max-width: 860px) {
+  .doc-row { grid-template-columns: 1fr auto; }
+  .doc-files { grid-column: 1 / -1; grid-row: 2; }
+  .doc-file-info { flex-direction: column; gap: 0; }
+}
+
+/* ---------------------------------------------------------------- alerta de leads duplicados */
+.dup-banner { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 14px; padding: 11px 14px; border-radius: var(--radius-sm); background: #fff4e0; border: 1px solid #f5d9a6; color: #7a4a00; }
+.dup-banner .ico { width: 22px; height: 22px; fill: #e08a00; flex: none; }
+.dup-banner strong { color: #6b3f00; }
+.dup-banner .btn { margin-left: auto; }
+.chip-dup { background: #fff4e0; color: #a86400; cursor: pointer; }
+.dup-group { border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 10px 12px; margin-bottom: 10px; }
+.dup-group-head { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 6px; }
+.dup-group ul { list-style: none; margin: 0; padding: 0; }
+.dup-group li { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; padding: 6px 0; border-top: 1px solid #f2f0f7; }
+.dup-group li:first-child { border-top: 0; }
+.dup-group li small { color: var(--muted); }
+.dup-group li .dup-owner { margin-left: auto; }
+.dup-hidden { color: var(--muted); font-style: italic; }

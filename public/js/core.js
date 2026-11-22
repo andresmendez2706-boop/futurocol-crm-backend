@@ -51,6 +51,7 @@ export async function loadAll() {
   Object.assign(S, {
     me: data.me, users: data.users, companies: data.companies, contacts: data.contacts, deals: data.deals,
     tasks: data.tasks, messages: data.messages, settings: data.settings, constants: data.constants, today: data.today,
+    duplicates: data.duplicates || [],
   });
   if (!S.period) S.period = data.me.prefs?.period || defaultPeriod();
   if (S.ally === undefined) S.ally = data.me.prefs?.ally || '';
@@ -157,6 +158,22 @@ export const dealById = (id) => S.deals.find((d) => d.id === id);
 export const taskById = (id) => S.tasks.find((t) => t.id === id);
 export const stageById = (id) => S.settings.stages.find((s) => s.id === id);
 export const stageLabel = (id) => stageById(id)?.label || id || '—';
+// ---------------------------------------------------------------- documentos de los negocios
+export const docTypes = () => S.constants.documentTypes || [];
+export const requiredDocTypes = () => docTypes().filter((t) => t.required);
+export const docTypeLabel = (id) => docTypes().find((t) => t.id === id)?.label || id;
+// Tipos obligatorios que aún no tiene el negocio.
+export const missingDocs = (deal) => {
+  const have = new Set((deal?.documents || []).map((x) => x.type));
+  return requiredDocTypes().filter((t) => !have.has(t.id));
+};
+export const fileSize = (n) => (n >= 1024 * 1024 ? `${Number((n / 1024 / 1024).toFixed(1))} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+
+// ---------------------------------------------------------------- leads duplicados
+// Ids de los contactos (visibles) que forman parte de algún grupo de posibles duplicados.
+export const duplicateIds = () => new Set((S.duplicates || []).flatMap((g) => g.contacts.map((c) => c.id).filter(Boolean)));
+export const duplicateGroupOf = (contactId) => (S.duplicates || []).find((g) => g.contacts.some((c) => c.id === contactId));
+
 export const WON = 'ganado';
 export const LOST = 'perdido';
 export const isClosedStage = (id) => (S.constants.closedStages || ['ganado', 'perdido', 'aplazado']).includes(id);
@@ -275,6 +292,9 @@ const ICONS = {
   columns: 'M3 3h5v18H3V3zm6.5 0h5v18h-5V3zM16 3h5v18h-5V3z',
   lock: 'M18 8h-1V6A5 5 0 0 0 7 6v2H6a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V10a2 2 0 0 0-2-2zM9 6a3 3 0 0 1 6 0v2H9V6z',
   whatsapp: 'M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2z',
+  clip: 'M16.5 6v11.5a4 4 0 0 1-8 0V5a2.5 2.5 0 0 1 5 0v10.5a1 1 0 0 1-2 0V6H10v9.5a2.5 2.5 0 0 0 5 0V5a4 4 0 0 0-8 0v12.5a5.5 5.5 0 0 0 11 0V6h-1.5z',
+  alert: 'M1 21h22L12 2 1 21zm12-3h-2v-2h2v2zm0-4h-2v-4h2v4z',
+  eye: 'M12 4.5C7 4.5 2.7 7.6 1 12c1.7 4.4 6 7.5 11 7.5s9.3-3.1 11-7.5c-1.7-4.4-6-7.5-11-7.5zM12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10zm0-8a3 3 0 1 0 0 6 3 3 0 0 0 0-6z',
 };
 export const icon = (name, cls = '') => `<svg class="ico ${cls}" viewBox="0 0 24 24" aria-hidden="true"><path d="${ICONS[name] || ''}"/></svg>`;
 
