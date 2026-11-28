@@ -16,31 +16,21 @@ test.after(() => db.pool.end());
 
 const PNG_BASE64 = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0]).toString('base64');
 
-test('sin cédula, diploma y acta de grado no se puede marcar como ganado', async () => {
+test('los documentos son opcionales: el negocio pasa a ganado sin ellos', async () => {
   const d = (await s.a1.post('/api/deals', { title: 'Esp', contactId: contact.id, value: 100 })).body;
-  let r = await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
-  assert.equal(r.status, 422);
-  assert.equal(r.body.code, 'DOCUMENTS_REQUIRED');
-  assert.deepEqual(r.body.missing, ['cedula', 'diploma', 'acta_grado']);
-
-  await s.a1.post(`/api/deals/${d.id}/documents`, { type: 'cedula', fileName: 'cc.pdf', data: PDF_BASE64 });
-  r = await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
-  assert.equal(r.status, 422);
-  assert.deepEqual(r.body.missing, ['diploma', 'acta_grado']);
-  // ni siquiera el admin se salta la regla
-  assert.equal((await s.admin.patch(`/api/deals/${d.id}`, { stage: 'ganado' })).status, 422);
-
-  await s.a1.post(`/api/deals/${d.id}/documents`, { type: 'diploma', fileName: 'diploma.png', data: PNG_BASE64 });
-  await s.a1.post(`/api/deals/${d.id}/documents`, { type: 'acta_grado', fileName: 'acta.pdf', data: PDF_BASE64 });
-  r = await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
+  const r = await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
   assert.equal(r.status, 200);
   assert.equal(r.body.stage, 'ganado');
+  // también se puede crear directamente como ganado
+  const c = await s.a1.post('/api/deals', { title: 'X', contactId: contact.id, stage: 'ganado' });
+  assert.equal(c.status, 201);
 });
 
-test('un negocio no puede crearse directamente como ganado', async () => {
-  const r = await s.a1.post('/api/deals', { title: 'X', contactId: contact.id, stage: 'ganado' });
-  assert.equal(r.status, 422);
-  assert.equal(r.body.code, 'DOCUMENTS_REQUIRED');
+test('se pueden adjuntar PDF e imágenes', async () => {
+  const d = (await s.a1.post('/api/deals', { title: 'Img', contactId: contact.id })).body;
+  const r = await s.a1.post(`/api/deals/${d.id}/documents`, { type: 'diploma', fileName: 'diploma.png', data: PNG_BASE64 });
+  assert.equal(r.status, 201);
+  assert.equal(r.body.mimeType, 'image/png');
 });
 
 test('se valida el contenido real del archivo y el tamaño', async () => {
@@ -80,16 +70,12 @@ test('documentos: listado, descarga y permisos', async () => {
   assert.equal((await s.a1.del(`/api/deals/${d.id}/documents/${doc.id}`)).status, 200);
 });
 
-test('en un negocio ganado no se puede quitar el único documento obligatorio de un tipo', async () => {
+test('en un negocio ganado también se puede eliminar un documento', async () => {
   const d = (await s.a1.post('/api/deals', { title: 'W', contactId: contact.id })).body;
   await attachRequiredDocs(s.a1, d.id);
   await s.a1.patch(`/api/deals/${d.id}`, { stage: 'ganado' });
   const docs = (await s.a1.get(`/api/deals/${d.id}/documents`)).body;
   const cedula = docs.find((x) => x.type === 'cedula');
-  const r = await s.a1.del(`/api/deals/${d.id}/documents/${cedula.id}`);
-  assert.equal(r.status, 422);
-  // con el reemplazo subido, ya se puede borrar el anterior
-  await s.a1.post(`/api/deals/${d.id}/documents`, { type: 'cedula', fileName: 'nueva.pdf', data: PDF_BASE64 });
   assert.equal((await s.a1.del(`/api/deals/${d.id}/documents/${cedula.id}`)).status, 200);
 });
 

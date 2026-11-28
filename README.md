@@ -91,11 +91,10 @@ configuración e importación y restauración de copias. GitHub Actions las corr
 - Si un negocio no tiene probabilidad propia, usa la de su etapa (10/20/30/40/50/70/25/100/0, editable por etapa).
 
 ### Documentos del negocio (`src/services/documents.js`)
-- Cada negocio tiene una sección **Documentos**: **cédula**, **diploma** y **acta de grado** (obligatorios) y "otro documento" (opcional). Se aceptan PDF o fotos (JPG, PNG, WEBP; las fotos HEIC del iPhone se convierten). Máximo 5 MB por archivo; las fotos grandes se reducen en el navegador antes de subirlas.
-- **Regla obligatoria:** un negocio no puede pasar a **Cierre ganado** (ni crearse como ganado) sin los tres obligatorios (`422 DOCUMENTS_REQUIRED` con la lista `missing`). Aplica también al admin. En un negocio ganado no se puede borrar el único archivo de un tipo obligatorio: primero se sube el reemplazo.
+- Cada negocio tiene una sección **Documentos**: cédula, diploma, acta de grado y "otro documento". **Todos son opcionales**: el negocio avanza de etapa (incluso a Cierre ganado) aunque falten. Se aceptan PDF o fotos (JPG, PNG, WEBP; las fotos HEIC del iPhone se convierten). Máximo 5 MB por archivo; las fotos grandes se reducen en el navegador antes de subirlas.
 - El tipo real del archivo se verifica por su contenido (no por la extensión). Solo ven, suben y borran documentos el responsable del negocio y el admin. Cada subida y eliminación queda en la auditoría.
 - Los archivos se guardan **en la base de datos** (tabla `deal_documents`), porque el servidor de Render no tiene disco permanente. También van en la copia de seguridad (en base64) mientras sumen hasta 30 MB; por encima de eso la copia lleva solo la lista para no agotar la memoria del servidor.
-- La tarjeta del Kanban muestra "Docs 1/3" mientras falte alguno.
+- La tarjeta del Kanban muestra, como dato informativo, "Docs 1/3" mientras falte alguno de los tres principales.
 
 ### Alerta de leads duplicados (`src/services/duplicates.js`)
 - Dos contactos son posibles duplicados si tienen el **mismo correo** (sin importar mayúsculas ni espacios) o el **mismo teléfono** (solo dígitos; "+57 300 123 4567" = "3001234567"). Los que coinciden se agrupan.

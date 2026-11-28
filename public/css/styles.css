@@ -704,7 +704,8 @@ p.small, .small { font-size: .82rem; }
 .doc-file a { display: inline-flex; align-items: center; gap: 5px; font-weight: 550; word-break: break-all; }
 .doc-file a .ico { width: 15px; height: 15px; fill: currentColor; flex: none; }
 .doc-file .icon-btn { margin-left: auto; flex: none; }
-.deal-card .chip-warn { width: fit-content; }
+.deal-card .chip-docs { width: fit-content; }
+.chip-docs { background: #eef0f5; color: var(--muted); }
 .doc-missing { color: var(--red); font-weight: 600; font-size: .88rem; }
 .doc-upload { cursor: pointer; white-space: nowrap; }
 .doc-upload.loading { opacity: .55; pointer-events: none; }

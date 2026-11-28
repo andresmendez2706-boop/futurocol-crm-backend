@@ -160,12 +160,12 @@ export const stageById = (id) => S.settings.stages.find((s) => s.id === id);
 export const stageLabel = (id) => stageById(id)?.label || id || '—';
 // ---------------------------------------------------------------- documentos de los negocios
 export const docTypes = () => S.constants.documentTypes || [];
-export const requiredDocTypes = () => docTypes().filter((t) => t.required);
+export const mainDocTypes = () => docTypes().filter((t) => t.main);
 export const docTypeLabel = (id) => docTypes().find((t) => t.id === id)?.label || id;
-// Tipos obligatorios que aún no tiene el negocio.
+// Documentos principales (opcionales) que aún no tiene el negocio.
 export const missingDocs = (deal) => {
   const have = new Set((deal?.documents || []).map((x) => x.type));
-  return requiredDocTypes().filter((t) => !have.has(t.id));
+  return mainDocTypes().filter((t) => !have.has(t.id));
 };
 export const fileSize = (n) => (n >= 1024 * 1024 ? `${Number((n / 1024 / 1024).toFixed(1))} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 

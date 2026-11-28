@@ -12,7 +12,7 @@ const { planStageChange } = require('../services/stageChange');
 const { resolveAssignee, userName } = require('../services/ownership');
 const { resolveAlly, assertProgram } = require('../services/allies');
 const documents = require('../services/documents');
-const { DEAL_TYPES, DOCUMENT_TYPES, WON } = require('../constants');
+const { DEAL_TYPES, DOCUMENT_TYPES } = require('../constants');
 const { toCSV } = require('../csv');
 const {
   ah, HttpError, newId, mapDeal, buildSet,
@@ -61,8 +61,6 @@ router.post('/', ah(async (req, res) => {
   const stages = await settings.getStages();
   const stage = data.stage || stages[0].id;
   const plan = planStageChange({ current: null, nextStage: stage, lossReason: data.lossReason, stages, user: req.user });
-  // Un negocio nuevo aún no tiene documentos: no puede nacer como ganado.
-  if (stage === WON) await documents.assertRequiredForWin(null);
   const assignedTo = await resolveAssignee(req.user, data.assignedTo);
   const { rows } = await db.query(
     `INSERT INTO deals (id, title, contact_id, value, stage, deal_type, product, convocatoria, probability,
@@ -108,8 +106,6 @@ router.patch('/:id', ah(async (req, res) => {
     let plan = null;
     if (data.stage !== undefined && data.stage !== current.stage) {
       plan = planStageChange({ current, nextStage: data.stage, lossReason: data.lossReason, stages, user: req.user });
-      // Obligatorio: cédula, diploma y acta de grado adjuntos antes de cerrar como ganado.
-      if (data.stage === WON) await documents.assertRequiredForWin(current.id, client);
       Object.assign(cols, plan.columns);
     }
     let reassigned = null;
@@ -214,15 +210,6 @@ router.delete('/:id/documents/:docId', ah(async (req, res) => {
     );
     const doc = rows[0];
     if (!doc) throw new HttpError(404, 'Documento no encontrado');
-    // Un negocio ganado no puede quedarse sin un documento obligatorio.
-    if (deal.stage === WON && doc.doc_type !== 'otro') {
-      const { rows: same } = await client.query(
-        'SELECT count(*)::int AS n FROM deal_documents WHERE deal_id = $1 AND doc_type = $2', [deal.id, doc.doc_type],
-      );
-      if (same[0].n <= 1) {
-        throw new HttpError(422, `El negocio está ganado: la ${documents.typeLabel(doc.doc_type).toLowerCase()} es obligatoria. Sube primero el reemplazo y luego elimina este archivo.`, { code: 'DOCUMENTS_REQUIRED' });
-      }
-    }
     await client.query('DELETE FROM deal_documents WHERE id = $1', [doc.id]);
     await audit({
       client, by: req.user, action: 'eliminación', entityType: 'documento', entityLabel: deal.title,

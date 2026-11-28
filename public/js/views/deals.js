@@ -3,7 +3,7 @@ import {
   fmtDateTime, stageLabel, options, dealProbability, isClosedStage, inPeriod, billingDate, periodLabel,
   savePrefs, cachedDashboard, canEditTask, currencyCode, lightDot, TASK_TYPE_LABELS, WON, LOST,
   inAllyFilter, allyName, multiAlly, programsFor, myAllies,
-  docTypes, requiredDocTypes, missingDocs, fileSize,
+  docTypes, mainDocTypes, missingDocs, fileSize,
 } from '../core.js';
 import { taskForm } from './tasks.js';
 import {
@@ -47,13 +47,13 @@ function dealCard(d) {
   </div>`;
 }
 
-// Aviso en la tarjeta: cuántos documentos obligatorios tiene (solo si le falta alguno).
+// Dato informativo en la tarjeta: cuántos documentos principales tiene (los documentos son opcionales).
 function docsChip(d) {
   if (d.stage === LOST) return '';
-  const total = requiredDocTypes().length;
+  const total = mainDocTypes().length;
   const missing = missingDocs(d).length;
   if (!total || !missing) return '';
-  return `<span class="chip chip-sm chip-warn" title="Faltan: ${esc(missingDocs(d).map((t) => t.label).join(', '))}">${icon('clip')} Docs ${total - missing}/${total}</span>`;
+  return ` <span class="chip chip-sm chip-docs" title="Sin adjuntar (opcional): ${esc(missingDocs(d).map((t) => t.label).join(', '))}">${icon('clip')} Docs ${total - missing}/${total}</span>`;
 }
 
 function kanban(list) {
@@ -174,12 +174,6 @@ export function mount(root) {
 export async function moveDeal(deal, stage) {
   if (!deal || deal.stage === stage) return;
   if (!canManage(deal)) { toast('No puedes mover este negocio', 'error'); return; }
-  // Obligatorio: cédula, diploma y acta de grado antes de cerrar como ganado (el servidor valida igual).
-  if (stage === WON && missingDocs(deal).length) {
-    await window.crm.refresh();
-    await askForDocuments(deal, missingDocs(deal).map((t) => t.label));
-    return;
-  }
   const body = { stage };
   if (stage === LOST && !deal.lossReason) {
     const reasons = [...new Set(S.deals.map((d) => d.lossReason).filter(Boolean))].slice(0, 20);
@@ -193,11 +187,6 @@ export async function moveDeal(deal, stage) {
     await api('PATCH', `/api/deals/${deal.id}`, body);
     toast(stage === WON ? '¡Negocio ganado! 🎉' : `Movido a "${stageLabel(stage)}"`);
   } catch (err) {
-    if (err.code === 'DOCUMENTS_REQUIRED') {
-      await window.crm.refresh();
-      await askForDocuments(deal, (err.body.missing || []).map(docLabel));
-      return;
-    }
     toast(err.message, 'error');
   }
   await window.crm.refresh();
@@ -205,18 +194,6 @@ export async function moveDeal(deal, stage) {
 
 const docLabel = (id) => docTypes().find((t) => t.id === id)?.label || id;
 
-async function askForDocuments(deal, labels) {
-  const go = await confirmDialog(
-    `Para marcar "${deal.title}" como ganado primero debes adjuntar:\n${labels.map((l) => `• ${l}`).join('\n')}`,
-    { title: 'Faltan documentos obligatorios', okText: 'Adjuntar documentos' },
-  );
-  if (!go) return;
-  if (!document.getElementById(`deal-docs-${deal.id}`)) openDeal(deal.id);
-  const box = document.getElementById(`deal-docs-${deal.id}`);
-  box?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  box?.classList.add('flash');
-  setTimeout(() => box?.classList.remove('flash'), 1800);
-}
 
 // ---------------------------------------------------------------- formulario
 export function dealForm(deal = null, { contactId, stage } = {}) {
@@ -231,8 +208,7 @@ export function dealForm(deal = null, { contactId, stage } = {}) {
       { name: 'contactId', label: 'Contacto', type: 'select', value: d.contactId || contactId, empty: 'Selecciona un contacto', required: true, options: contacts.map((c) => ({ value: c.id, label: `${c.name}${multiAlly() ? ` · ${allyName(c.allyId)}` : ''}` })) },
       allyField(startAlly),
       { name: 'value', label: `Valor (${currencyCode()})`, type: 'number', min: 0, step: 1000, value: d.value ?? '' },
-      // Un negocio nuevo no puede nacer ganado: primero se adjuntan los documentos obligatorios.
-      deal ? null : { name: 'stage', label: 'Etapa', type: 'select', value: stage && stage !== WON ? stage : S.settings.stages[0]?.id, options: S.settings.stages.filter((s) => s.id !== WON).map((s) => ({ value: s.id, label: s.label })), hint: 'Para "Cierre ganado", crea el negocio, adjunta los documentos y luego márcalo como ganado.' },
+      deal ? null : { name: 'stage', label: 'Etapa', type: 'select', value: stage || S.settings.stages[0]?.id, options: S.settings.stages.map((s) => ({ value: s.id, label: s.label })) },
       { name: 'dealType', label: 'Tipo', type: 'select', value: d.dealType, empty: '—', options: S.constants.dealTypes },
       { name: 'product', label: 'Producto / programa', type: 'select', value: d.product, empty: 'Sin programa', options: programsFor(startAlly) },
       { name: 'convocatoria', label: 'Convocatoria', value: d.convocatoria },
@@ -292,21 +268,20 @@ function documentsHtml(d, manage) {
     </li>`;
   const rows = docTypes().map((t) => {
     const files = docs.filter((f) => f.type === t.id);
-    const lacking = t.required && !files.length;
-    return `<div class="doc-row${lacking ? ' missing' : ''}${files.length ? ' ok' : ''}">
+    return `<div class="doc-row${files.length ? ' ok' : ''}">
       <div class="doc-type">
-        <span class="doc-status">${files.length ? '✓' : t.required ? '!' : '·'}</span>
-        <div><strong>${esc(t.label)}</strong><small class="block muted">${t.required ? 'Obligatorio' : 'Opcional'}</small></div>
+        <span class="doc-status">${files.length ? '✓' : '·'}</span>
+        <div><strong>${esc(t.label)}</strong><small class="block muted">Opcional</small></div>
       </div>
-      <div class="doc-files">${files.length ? `<ul>${files.map(fileLine).join('')}</ul>` : `<span class="${lacking ? 'doc-missing' : 'muted'}">${lacking ? 'Falta adjuntar' : 'Sin archivos'}</span>`}</div>
+      <div class="doc-files">${files.length ? `<ul>${files.map(fileLine).join('')}</ul>` : '<span class="muted">Sin archivos</span>'}</div>
       ${manage ? `<label class="btn btn-sm doc-upload">${icon('clip')} ${files.length ? 'Agregar' : 'Adjuntar'}
         <input type="file" hidden accept="${ACCEPT}" data-change="deal-doc-upload" data-id="${esc(d.id)}" data-type="${esc(t.id)}"></label>` : ''}
     </div>`;
   }).join('');
   return `<section class="deal-docs" id="deal-docs-${esc(d.id)}">
     <div class="section-head"><h4>Documentos</h4>
-      ${missing.length ? `<span class="chip chip-warn">Faltan ${missing.length} obligatorio(s)</span>` : '<span class="chip chip-ok">Documentos completos</span>'}</div>
-    <p class="muted small">Cédula, diploma y acta de grado son obligatorios para marcar el negocio como ganado. PDF o foto, máximo ${fileSize(S.constants.maxDocumentBytes || 5242880)} por archivo.</p>
+      ${missing.length ? `<span class="chip chip-docs">${mainDocTypes().length - missing.length} de ${mainDocTypes().length} adjuntos</span>` : '<span class="chip chip-ok">Documentos completos</span>'}</div>
+    <p class="muted small">Opcional: puedes adjuntar cédula, diploma, acta de grado u otros. El negocio avanza de etapa aunque falten. PDF o foto, máximo ${fileSize(S.constants.maxDocumentBytes || 5242880)} por archivo.</p>
     <div class="doc-list">${rows}</div>
   </section>`;
 }

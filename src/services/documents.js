@@ -2,13 +2,12 @@
 
 // Documentos adjuntos de los negocios (cédula, diploma, acta de grado, otros).
 //
-// Regla obligatoria: un negocio solo puede pasar a "Cierre ganado" si tiene adjuntos todos los
-// documentos obligatorios (REQUIRED_DOCUMENTS). Mientras esté ganado, tampoco se puede eliminar
-// el último archivo de un tipo obligatorio (primero hay que subir el reemplazo).
+// Son opcionales: el negocio puede avanzar de etapa (incluso a "Cierre ganado") sin ellos.
+// Cédula, diploma y acta de grado son los documentos principales que el CRM sugiere adjuntar.
 
 const db = require('../db');
 const {
-  DOCUMENT_TYPES, REQUIRED_DOCUMENTS, MAX_DOCUMENT_BYTES,
+  DOCUMENT_TYPES, MAX_DOCUMENT_BYTES,
 } = require('../constants');
 const { HttpError } = require('../util');
 
@@ -59,24 +58,7 @@ async function listMetaByDeal(dealIds, client = db) {
   return out;
 }
 
-async function missingRequired(dealId, client = db) {
-  const { rows } = await client.query('SELECT DISTINCT doc_type FROM deal_documents WHERE deal_id = $1', [dealId]);
-  const have = new Set(rows.map((r) => r.doc_type));
-  return REQUIRED_DOCUMENTS.filter((t) => !have.has(t));
-}
-
-// Obligatorio: sin los documentos requeridos no se puede cerrar como ganado.
-async function assertRequiredForWin(dealId, client = db) {
-  const missing = dealId ? await missingRequired(dealId, client) : [...REQUIRED_DOCUMENTS];
-  if (missing.length) {
-    throw new HttpError(
-      422,
-      `Para marcar el negocio como ganado debes adjuntar: ${missing.map(typeLabel).join(', ')}`,
-      { code: 'DOCUMENTS_REQUIRED', missing },
-    );
-  }
-}
 
 module.exports = {
-  detectMime, decodeFile, mapDocument, listMetaByDeal, missingRequired, assertRequiredForWin, typeLabel, META_COLUMNS,
+  detectMime, decodeFile, mapDocument, listMetaByDeal, typeLabel, META_COLUMNS,
 };
